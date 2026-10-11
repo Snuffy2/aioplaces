@@ -1,4 +1,5 @@
 # aioplaces
+[![Documentation][docs-shield]][docs]
 
 aioplaces is a standalone asynchronous Python client for Nominatim reverse
 geocoding and OSM feature lookup, Wikidata entity retrieval, and typed parsing
@@ -6,9 +7,12 @@ of Nominatim place responses. Python 3.14 or newer is required. It has no Home
 Assistant dependency.
 
 The library does not implement forward search, Overpass, sensor state, zones, or
-previous-place history. The [Sphinx documentation](docs/source/index.rst)
-includes guides and an API reference. Read the Docs build configuration is
-included; hosting requires importing this repository into a Read the Docs project.
+previous-place history. The [documentation][docs] includes guides and an API
+reference.
+
+## Documentation
+
+- Read the Docs: <https://aioplaces.readthedocs.io>
 
 ## Installation
 
@@ -163,3 +167,6 @@ at commit `f2e9e3af54f67e83b680189b2e069d478f9e2ade` (3.0.2). Credit belongs
 to the Places contributors; source history remains in the original repository.
 This library preserves the GPL version 3 source license; see [LICENSE](LICENSE).
 The Places integration has not been changed to use this package.
+
+[docs]: https://aioplaces.readthedocs.io
+[docs-shield]: https://app.readthedocs.org/projects/aioplaces/badge/?version=latest&style=for-the-badge
