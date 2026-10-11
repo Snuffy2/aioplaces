@@ -6,8 +6,9 @@ of Nominatim place responses. Python 3.14 or newer is required. It has no Home
 Assistant dependency.
 
 The library does not implement forward search, Overpass, sensor state, zones, or
-previous-place history. Hosted documentation is planned for a later change; this
-README is the current user guide.
+previous-place history. The [Sphinx documentation](docs/source/index.rst)
+includes guides and an API reference. Read the Docs build configuration is
+included; hosting requires importing this repository into a Read the Docs project.
 
 ## Installation
 
@@ -136,6 +137,17 @@ HTTP requests and do not contact upstream services. CI runs these checks on
 pull requests and pushes to `main`, then installs the built wheel in a clean
 Python 3.14 environment without Home Assistant and imports the public API.
 Coverage must reach 80 percent.
+
+Build the documentation locally with the `docs` extra:
+
+~~~sh
+uv sync --python 3.14 --locked --group dev --extra docs
+./.venv/bin/python -m sphinx -b html -W --keep-going docs/source docs/_build/html
+./.venv/bin/python -m sphinx -b doctest -W docs/source docs/_build/doctest
+~~~
+
+Open `docs/_build/html/index.html` to read the site. API pages use the package's
+docstrings, and the documentation includes the root changelog automatically.
 
 ## Releases
 
