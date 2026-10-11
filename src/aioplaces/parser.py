@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
+import re
 
 from .const import CITY_LIST, NEIGHBOURHOOD_LIST, POSTAL_TOWN_LIST
 from .models import ParsedPlace
@@ -21,11 +21,11 @@ def parse_place(payload: Mapping[str, object], language: str | None = None) -> P
     a higher-priority group claims them.
 
     Args:
-        payload: Nominatim response mapping.
-        language: Comma-separated preferred language codes, checked in order.
+        payload (Mapping[str, object]): Nominatim response mapping.
+        language (str | None): Comma-separated preferred language codes, checked in order.
 
     Returns:
-        An immutable record containing normalized string fields. Malformed
+        ParsedPlace: An immutable record containing normalized string fields. Malformed
         nested structures and unsupported scalar values produce ``None``.
     """
     address = _mapping(payload.get("address"))
@@ -143,27 +143,55 @@ def parse_place(payload: Mapping[str, object], language: str | None = None) -> P
 
 
 def _mapping(value: object) -> Mapping[str, object] | None:
-    """Return a nested mapping value when it has the expected shape."""
+    """Return a nested mapping value when it has the expected shape.
+
+    Args:
+        value (object): Candidate nested response value.
+
+    Returns:
+        Mapping[str, object] | None: Mapping value, or None for other shapes.
+    """
     if isinstance(value, Mapping):
         return value
     return None
 
 
 def _string(value: object) -> str | None:
-    """Return a scalar string value, rejecting other JSON shapes."""
+    """Return a scalar string value, rejecting other JSON shapes.
+
+    Args:
+        value (object): Candidate response scalar.
+
+    Returns:
+        str | None: String value, or None for other types.
+    """
     if isinstance(value, str):
         return value
     return None
 
 
 def _nonempty_string(value: object) -> str | None:
-    """Return a nonempty string value, matching optional attribution behavior."""
+    """Return a nonempty string value, matching optional attribution behavior.
+
+    Args:
+        value (object): Candidate attribution value.
+
+    Returns:
+        str | None: Nonempty string, or None for empty or invalid values.
+    """
     result = _string(value)
     return result if result else None
 
 
 def _normalized_osm_id(value: object) -> str | None:
-    """Normalize positive integer OSM identifiers to decimal strings."""
+    """Normalize positive integer OSM identifiers to decimal strings.
+
+    Args:
+        value (object): Candidate integer or decimal string identifier.
+
+    Returns:
+        str | None: Positive decimal identifier, or None if invalid.
+    """
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
@@ -182,7 +210,15 @@ def _normalized_osm_id(value: object) -> str | None:
 
 
 def _first_present(address: Mapping[str, object] | None, types: list[str]) -> str | None:
-    """Return the first configured address key present in a mapping."""
+    """Return the first configured address key present in a mapping.
+
+    Args:
+        address (Mapping[str, object] | None): Optional address response.
+        types (list[str]): Address keys in preference order.
+
+    Returns:
+        str | None: First present key, or None when no key matches.
+    """
     if address is None:
         return None
     for address_type in types:
@@ -192,20 +228,43 @@ def _first_present(address: Mapping[str, object] | None, types: list[str]) -> st
 
 
 def _through_match(types: list[str], matched_type: str | None) -> list[str]:
-    """Return address types through the selected type in precedence order."""
+    """Return address types through the selected type in precedence order.
+
+    Args:
+        types (list[str]): Ordered address keys.
+        matched_type (str | None): Selected key from the ordered list.
+
+    Returns:
+        list[str]: Keys up to and including the match, or an empty list.
+    """
     if matched_type is None:
         return []
     return types[: types.index(matched_type) + 1]
 
 
 def _without_types(types: list[str], excluded_types: list[str]) -> list[str]:
-    """Return candidate address types that earlier groups have not claimed."""
+    """Return candidate address types that earlier groups have not claimed.
+
+    Args:
+        types (list[str]): Candidate address keys.
+        excluded_types (list[str]): Keys claimed by earlier address groups.
+
+    Returns:
+        list[str]: Remaining keys in their original order.
+    """
     excluded = set(excluded_types)
     return [address_type for address_type in types if address_type not in excluded]
 
 
 def _is_blank(value: str | None) -> bool:
-    """Return whether a normalized optional string is blank."""
+    """Return whether a normalized optional string is blank.
+
+    Args:
+        value (str | None): Optional normalized string.
+
+    Returns:
+        bool: Whether the value is None or empty.
+    """
     return value is None or value == ""
 
 
@@ -213,7 +272,15 @@ def _route_number(
     place_category: str | None,
     namedetails: Mapping[str, object] | None,
 ) -> str | None:
-    """Extract the first highway reference segment containing a digit."""
+    """Extract the first highway reference segment containing a digit.
+
+    Args:
+        place_category (str | None): Nominatim place category.
+        namedetails (Mapping[str, object] | None): Optional names and references.
+
+    Returns:
+        str | None: First highway reference containing a digit, or None.
+    """
     if (
         place_category is None
         or place_category.lower() != "highway"

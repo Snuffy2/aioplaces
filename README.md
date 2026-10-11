@@ -1,29 +1,36 @@
 # aioplaces
 
-Async Nominatim and Wikidata requests with typed, side-effect-free place parsing.
-Python 3.14 or newer is required. No Home Assistant installation is needed.
+aioplaces is a standalone asynchronous Python client for Nominatim reverse
+geocoding and OSM feature lookup, Wikidata entity retrieval, and typed parsing
+of Nominatim place responses. Python 3.14 or newer is required. It has no Home
+Assistant dependency.
 
-The library provides reverse geocoding, OSM feature lookup, Wikidata entity
-retrieval, a shared TTL cache, and serialized request throttling. It does not
-implement forward search, Overpass, sensor state, zones, or previous-place history.
+The library does not implement forward search, Overpass, sensor state, zones, or
+previous-place history. Hosted documentation is planned for a later change; this
+README is the current user guide.
 
 ## Installation
 
-Until the first PyPI release, install from a local checkout:
+The package has not had its first PyPI release. For now, install from a checkout
+with Python 3.14 active:
 
-```sh
+~~~sh
 python -m pip install .
-```
+~~~
 
-Once published, installation will be `python -m pip install aioplaces`.
+After the package is published, install it from PyPI with:
 
-## Usage
+~~~sh
+python -m pip install aioplaces
+~~~
+
+## Quick start
 
 Choose a Nominatim endpoint whose usage policy permits your application. Set
-`NOMINATIM_URL` to that endpoint's base URL, including any deployment path prefix.
-The library deliberately requires the endpoint and an identifying user agent.
+`NOMINATIM_URL` to its base URL, including any deployment path prefix. The client
+requires both the endpoint and an identifying user agent.
 
-```python
+~~~python
 import asyncio
 import os
 
@@ -46,62 +53,62 @@ async def main() -> None:
 
 
 asyncio.run(main())
-```
+~~~
 
-The caller owns the HTTP session and closes it. Reuse one `PlacesClient` across
-concurrent consumers to share its cache and throttle. Client instances belong to
-one event loop; different instances or processes do not coordinate their limits.
-Language and optional contact `email` are per-request arguments. The library does
-not invent a contact email or submit one unless supplied.
+The caller owns and closes the `aiohttp.ClientSession`. Reuse a client instance
+for concurrent consumers on the same event loop to share its cache and request
+spacing. Separate instances and processes do not coordinate. The optional
+Nominatim `email` argument is sent only when the caller supplies it.
 
-`reverse(latitude, longitude, ...)` calls Nominatim's `/reverse` endpoint.
-`lookup(osm_type, osm_id, ...)` calls `/lookup` for one feature: `osm_type` accepts
-`node`, `way`, `relation`, or `N`, `W`, `R`. `wikidata("Q123")` retrieves the
-Wikidata entity JSON. Lookup requests include namedetails, addressdetails, and
-extratags. Wikidata retrieval is explicit; the library does not fetch enrichment
-automatically.
+`reverse(latitude, longitude)` calls Nominatim's `/reverse` endpoint.
+`lookup(osm_type, osm_id)` calls `/lookup` for one node, way, or relation (also
+accepted as `N`, `W`, or `R`). `wikidata("Q123")` retrieves Wikidata entity JSON.
+Lookup requests ask for address details, name details, and extra tags; Wikidata
+retrieval is explicit and is not automatic enrichment.
 
-Each operation returns a JSON mapping, or `None` when no result exists. The raw
-mapping remains available for application-specific attributes and enrichment.
-`parse_place` returns an immutable `ParsedPlace` containing attribution, OSM
-identity, type/category, localized name, street, city, cleaned city, postal town,
-neighbourhood, region, county, country, postal code, formatted address, and route
-reference. Missing or inappropriate scalar values become `None`; parsing never
-mutates the supplied payload. Language preference follows the comma-separated
-order used by Places. Duplicate-name suppression and history belong to callers.
+Each client operation returns a JSON mapping or `None` if there is no result.
+The raw mapping remains available for application-specific fields.
+`parse_place` returns a frozen `ParsedPlace` with attribution, OSM identity, type
+and category, localized name, street, city, postal town, neighbourhood, region,
+county, country, postal code, formatted address, and route reference. Malformed
+or unsupported values become `None`; parsing does not mutate the input. Language
+preferences are tried in their comma-separated order.
 
-## Cache and failures
+## Client defaults and failures
 
-Defaults are a 500-entry cache with a four-hour TTL, a ten-second HTTP timeout,
-and serialized requests spaced at least one second apart. Settings are constructor
-arguments: `cache_maxsize`, `cache_ttl`, `timeout`, and `min_request_interval`.
-The optional `wikidata_base_url` defaults to Wikidata's `Special:EntityData` endpoint.
-Custom Nominatim servers can use a different nonnegative request interval; the
-public OpenStreetMap host cannot be configured below one second.
+The defaults are a 500-entry cache, a four-hour cache lifetime, a ten-second
+request timeout, and at least one second between requests made by a client.
+Configure these with `cache_maxsize`, `cache_ttl`, `timeout`, and
+`min_request_interval`; `wikidata_base_url` selects another Wikidata entity
+endpoint. The public `nominatim.openstreetmap.org` host rejects an interval
+below one second. A custom Nominatim endpoint may use any finite, nonnegative
+interval.
 
-Results are copied, including nested values, so callers cannot corrupt cached
-responses. `use_cache=False` bypasses reads and replaces the cache after a successful
-request. A failed forced refresh retains the previous success until it expires.
-Empty results and errors are not cached. A failed normal request removes any
-cached result for that request. Endpoint, language, email, and request arguments
-participate in the cache key.
+Cached mappings are deep-copied both when stored and returned. By default, a
+successful response is cached; an empty result is not. A normal failed request
+evicts a cached response for that request. A forced refresh with
+`use_cache=False` bypasses cache reads, replaces the cached value on success,
+and retains an earlier successful value if the refresh fails. Request settings,
+including endpoint, language, email, and operation arguments, are part of the
+cache key.
 
-`PlacesError` is the common exception base. `TransportError` represents connection
-or timeout failures; `HTTPError` exposes `status` and optional `retry_after`;
-`InvalidResponseError` represents invalid JSON, unsupported response shapes, or
-upstream service errors. Invalid caller arguments raise `ValueError`. Cancellation
-propagates. Requests are not retried automatically.
+`PlacesError` is the common exception base. `TransportError` covers network and
+timeout failures. `HTTPError` exposes the response `status` and optional
+`retry_after` header. `InvalidResponseError` covers invalid JSON and unsupported
+or error response payloads. Invalid caller arguments raise `ValueError`.
+Cancellation propagates, and requests are not retried automatically.
 
 ## Upstream usage policies
 
 The [public Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
-requires an identifying application user agent, attribution, caching, and at most
-one request per second across the application. Recurring geocoding has additional
-restrictions, including four requests per minute for regular or long-running bulk
-scripts. Periodic requests are discouraged. These limits are not per library
-instance or per end user: a local throttle alone does not establish compliance.
-Use a suitable hosted provider or your own Nominatim deployment when required.
-Do not submit confidential or personal information contrary to the service policy.
+requires an identifying application user agent, attribution, caching, and no
+more than one request per second across the application. Recurring geocoding
+has additional restrictions, including four requests per minute for regular or
+long-running bulk scripts; periodic requests are discouraged. These limits
+apply to the whole application, not each library instance or end user. A local
+client throttle alone does not establish compliance. Use a suitable hosted
+provider or your own Nominatim deployment when needed, and do not submit
+confidential or personal information contrary to the service policy.
 
 Preserve and display attribution returned in `ParsedPlace.attribution`.
 OpenStreetMap data licensing is separate from this library's source license.
@@ -110,39 +117,39 @@ for Wikidata requests as well.
 
 ## Development
 
-```sh
+Install the locked development and build dependencies with
+[uv](https://docs.astral.sh/uv/) and Python 3.14 or newer:
+
+~~~sh
 uv sync --python 3.14 --locked --group dev --group build
 ./.venv/bin/python -m prek run -a
+uv sync --locked --group dev --group build
+uv sync --python 3.14 --locked --group dev --group build
 ./.venv/bin/python -m pytest
 ./.venv/bin/python -m build --no-isolation
 ./.venv/bin/python -m twine check dist/*
-```
+~~~
 
-Tests mock HTTP requests and do not contact upstream services. CI also installs
-the built wheel into a fresh environment without Home Assistant and imports its
-public API. At least 80% combined statement/branch coverage is required.
+The `dev` dependency group includes the `lint` and `pytest` groups; `build` is
+separate. The second sync restores the build dependencies after prek. Tests mock
+HTTP requests and do not contact upstream services. CI runs these checks on
+pull requests and pushes to `main`, then installs the built wheel in a clean
+Python 3.14 environment without Home Assistant and imports the public API.
+Coverage must reach 80 percent.
 
 ## Releases
 
-Release Please manages version updates and changelogs from conventional commits.
-Configure `RELEASE_PLEASE_TOKEN` with repository access so its release events can
-trigger the publication workflow. Set the repository variable
-`RELEASE_PLEASE_ENABLED=true` after configuring that token to enable automation.
-Configure PyPI and TestPyPI Trusted Publishers
-for owner `Snuffy2`, repository `aioplaces`, workflow `publish.yml`, and environments
-`pypi` and `testpypi` respectively. Protect both GitHub environments with required
-reviewers and restrict production publication to release tags.
-
-Manual dispatch of `publish.yml` uploads to TestPyPI. Publishing a non-prerelease
-GitHub release with a tag matching `v<pyproject version>` uploads its validated
-wheel and source distribution to PyPI. No package has been published yet. A PyPI
-name lookup returning 404 does not guarantee the name can be registered.
+Release automation and repository setup are described in
+[.github/RELEASING.md](.github/RELEASING.md). Release Please is gated by the
+repository variable `RELEASE_PLEASE_ENABLED=true`. The publish workflow uses
+PyPI Trusted Publishing: stable GitHub Releases go to PyPI and prereleases go
+to TestPyPI. No package has been published yet.
 
 ## Origin and license
 
 Request behavior and address precedence were extracted from the
 [Places Home Assistant integration](https://github.com/custom-components/places)
-at commit `f2e9e3af54f67e83b680189b2e069d478f9e2ade` (3.0.2).
-Credit belongs to the Places contributors; source history is retained in the
-original repository. This library preserves the GPL version 3 source license; see
-[LICENSE](LICENSE). Places itself has not been changed to use this package.
+at commit `f2e9e3af54f67e83b680189b2e069d478f9e2ade` (3.0.2). Credit belongs
+to the Places contributors; source history remains in the original repository.
+This library preserves the GPL version 3 source license; see [LICENSE](LICENSE).
+The Places integration has not been changed to use this package.

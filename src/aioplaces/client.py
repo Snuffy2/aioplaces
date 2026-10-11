@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from asyncio import Lock, sleep
+from collections.abc import Callable
 import copy
 import json
 import logging
 import math
 import re
-from asyncio import Lock, sleep
-from collections.abc import Callable
 from time import monotonic
 from typing import NoReturn
 from urllib.parse import urlencode
@@ -36,11 +36,11 @@ def _validated_base_url(value: str, setting: str) -> URL:
     """Parse and validate an absolute service base URL.
 
     Args:
-        value: URL supplied by the caller.
-        setting: Configuration name used in validation errors.
+        value (str): URL supplied by the caller.
+        setting (str): Configuration name used in validation errors.
 
     Returns:
-        A normalized URL without a trailing path separator.
+        URL: A normalized URL without a trailing path separator.
 
     Raises:
         ValueError: If the URL is malformed or contains request-specific data.
@@ -70,11 +70,11 @@ def _finite_positive(value: float, setting: str) -> float:
     """Validate and return a positive finite numeric setting.
 
     Args:
-        value: Setting value to validate.
-        setting: Configuration name used in validation errors.
+        value (float): Setting value to validate.
+        setting (str): Configuration name used in validation errors.
 
     Returns:
-        The validated value.
+        float: The validated value.
 
     Raises:
         ValueError: If the value is not a positive finite number.
@@ -94,7 +94,7 @@ def _reject_nonstandard_constant(value: str) -> NoReturn:
     """Reject JavaScript constants that Python's JSON decoder otherwise accepts.
 
     Args:
-        value: Non-standard JSON constant reported by ``json.loads``.
+        value (str): Non-standard JSON constant reported by ``json.loads``.
 
     Raises:
         ValueError: Always, because the token is not valid JSON.
@@ -106,10 +106,10 @@ def _as_json_value(value: object) -> JSONValue:
     """Validate a decoded object and convert it to the recursive JSON type.
 
     Args:
-        value: Object returned by the JSON decoder.
+        value (object): Object returned by the JSON decoder.
 
     Returns:
-        The same JSON-compatible value with a precise recursive type.
+        JSONValue: The same JSON-compatible value with a precise recursive type.
 
     Raises:
         InvalidResponseError: If the decoded payload contains a non-JSON value.
@@ -133,7 +133,7 @@ def _service_error(payload: JSONMapping) -> None:
     """Raise for an error payload returned by a remote JSON service.
 
     Args:
-        payload: JSON mapping returned by the service.
+        payload (JSONMapping): JSON mapping returned by the service.
 
     Raises:
         InvalidResponseError: If the payload reports a service-side error.
@@ -146,10 +146,10 @@ def _normalize_nominatim_reverse(payload: JSONValue) -> JSONMapping | None:
     """Validate and normalize a Nominatim reverse-geocoding payload.
 
     Args:
-        payload: Decoded JSON payload.
+        payload (JSONValue): Decoded JSON payload.
 
     Returns:
-        A result mapping, or ``None`` when Nominatim reports no result.
+        JSONMapping | None: A result mapping, or ``None`` when Nominatim reports no result.
 
     Raises:
         InvalidResponseError: If Nominatim returns an unsupported payload.
@@ -170,10 +170,10 @@ def _normalize_nominatim_lookup(payload: JSONValue) -> JSONMapping | None:
     """Validate and normalize a Nominatim lookup payload.
 
     Args:
-        payload: Decoded JSON payload.
+        payload (JSONValue): Decoded JSON payload.
 
     Returns:
-        The single result mapping, or ``None`` when Nominatim found no result.
+        JSONMapping | None: The single result mapping, or ``None`` when Nominatim found no result.
 
     Raises:
         InvalidResponseError: If the payload has an unsupported shape.
@@ -198,10 +198,10 @@ def _normalize_wikidata(payload: JSONValue) -> JSONMapping | None:
     """Validate a Wikidata response object.
 
     Args:
-        payload: Decoded JSON payload.
+        payload (JSONValue): Decoded JSON payload.
 
     Returns:
-        The response mapping, or ``None`` when the response is empty.
+        JSONMapping | None: The response mapping, or ``None`` when the response is empty.
 
     Raises:
         InvalidResponseError: If the payload is not a valid service object.
@@ -217,8 +217,10 @@ def _normalize_wikidata(payload: JSONValue) -> JSONMapping | None:
 class PlacesClient:
     """Async client for Nominatim and Wikidata lookup APIs.
 
-    The caller owns the supplied aiohttp session. The client keeps only
-    per-instance cache and request-spacing state and never closes the session.
+    The caller owns the supplied aiohttp session. Public methods raise
+    ``ValueError`` for invalid input and propagate ``PlacesError`` subclasses for
+    transport, HTTP, and response failures. The client keeps only per-instance cache
+    and request-spacing state and never closes the session.
     """
 
     def __init__(
@@ -236,16 +238,17 @@ class PlacesClient:
         """Create a client that borrows an existing aiohttp session.
 
         Args:
-            session: Open aiohttp session owned by the caller.
-            base_url: Nominatim service root URL.
-            user_agent: User-Agent value sent with each request.
-            timeout: Positive request timeout in seconds.
-            cache_ttl: Positive cache lifetime in seconds.
-            cache_maxsize: Maximum number of successful responses to cache.
-            min_request_interval: Minimum seconds between requests from this client.
-            wikidata_base_url: Wikidata entity data endpoint root.
+            session (aiohttp.ClientSession): Open aiohttp session owned by the caller.
+            base_url (str): Nominatim service root URL.
+            user_agent (str): User-Agent value sent with each request.
+            timeout (float): Positive request timeout in seconds.
+            cache_ttl (float): Positive cache lifetime in seconds.
+            cache_maxsize (int): Maximum number of successful responses to cache.
+            min_request_interval (float): Minimum seconds between requests from this client.
+            wikidata_base_url (str): Wikidata entity data endpoint root.
 
         Raises:
+            TypeError: If session is not an aiohttp client session.
             ValueError: If a URL or client setting is invalid.
         """
         if not isinstance(session, aiohttp.ClientSession):
@@ -302,19 +305,19 @@ class PlacesClient:
         """Find the OSM address nearest a geographic coordinate.
 
         Args:
-            latitude: Latitude from -90 through 90 degrees.
-            longitude: Longitude from -180 through 180 degrees.
-            language: Optional ``Accept-Language`` preference.
-            email: Optional Nominatim contact email.
-            use_cache: Whether a previously cached result may be returned.
+            latitude (float): Latitude from -90 through 90 degrees.
+            longitude (float): Longitude from -180 through 180 degrees.
+            language (str | None): Optional ``Accept-Language`` preference.
+            email (str | None): Optional Nominatim contact email.
+            use_cache (bool): Whether a previously cached result may be returned.
 
         Returns:
-            The Nominatim result mapping, or ``None`` when there is no result.
+            JSONMapping | None: The Nominatim result mapping, or ``None`` when there is no result.
 
         Raises:
             ValueError: If either coordinate is invalid.
             PlacesError: If the request or response fails.
-        """
+        """  # noqa: DOC502  # Errors propagate from _coordinate and _request_json.
         lat = self._coordinate(latitude, "latitude", -90, 90)
         lon = self._coordinate(longitude, "longitude", -180, 180)
         query = urlencode(
@@ -347,19 +350,19 @@ class PlacesClient:
         """Look up one OSM feature by its type and identifier.
 
         Args:
-            osm_type: One of ``node``, ``way``, ``relation``, ``N``, ``W``, or ``R``.
-            osm_id: Positive integer identifier, either as an integer or digit string.
-            language: Optional ``Accept-Language`` preference.
-            email: Optional Nominatim contact email.
-            use_cache: Whether a previously cached result may be returned.
+            osm_type (str): One of ``node``, ``way``, ``relation``, ``N``, ``W``, or ``R``.
+            osm_id (int | str): Positive integer identifier, either as an integer or digit string.
+            language (str | None): Optional ``Accept-Language`` preference.
+            email (str | None): Optional Nominatim contact email.
+            use_cache (bool): Whether a previously cached result may be returned.
 
         Returns:
-            The single Nominatim result mapping, or ``None`` if no result exists.
+            JSONMapping | None: The single result mapping, or ``None`` if no result exists.
 
         Raises:
             ValueError: If the type or identifier is invalid.
             PlacesError: If the request or response fails.
-        """
+        """  # noqa: DOC503  # PlacesError propagates from _request_json.
         if not isinstance(osm_type, str) or osm_type.lower() not in _OSM_TYPES:
             raise ValueError("osm_type must be node, way, relation, N, W, or R")
         type_prefix = _OSM_TYPES[osm_type.lower()]
@@ -384,16 +387,16 @@ class PlacesClient:
         """Fetch one Wikidata entity's JSON data.
 
         Args:
-            wikidata_id: Wikidata entity identifier such as ``Q42``.
-            use_cache: Whether a previously cached result may be returned.
+            wikidata_id (str): Wikidata entity identifier such as ``Q42``.
+            use_cache (bool): Whether a previously cached result may be returned.
 
         Returns:
-            The Wikidata response mapping.
+            JSONMapping | None: The Wikidata response mapping, or ``None`` if it is empty.
 
         Raises:
             ValueError: If the entity identifier is invalid.
             PlacesError: If the request or response fails.
-        """
+        """  # noqa: DOC503  # PlacesError propagates from _request_json.
         if not isinstance(wikidata_id, str) or _WIKIDATA_ID.fullmatch(wikidata_id) is None:
             raise ValueError("wikidata_id must be a Q identifier followed by digits")
         url = str(URL(f"{self._wikidata_base_url}/{wikidata_id}.json"))
@@ -404,13 +407,13 @@ class PlacesClient:
         """Validate one finite coordinate within its geographic bounds.
 
         Args:
-            value: Coordinate value to validate.
-            name: Coordinate name used in validation errors.
-            minimum: Inclusive lower bound.
-            maximum: Inclusive upper bound.
+            value (float): Coordinate value to validate.
+            name (str): Coordinate name used in validation errors.
+            minimum (float): Inclusive lower bound.
+            maximum (float): Inclusive upper bound.
 
         Returns:
-            The validated coordinate as a float.
+            float: The validated coordinate.
 
         Raises:
             ValueError: If the coordinate is not a finite number in range.
@@ -430,10 +433,10 @@ class PlacesClient:
         """Validate and return a positive OSM integer identifier as text.
 
         Args:
-            value: Integer identifier or a string containing decimal digits.
+            value (int | str): Integer identifier or a string containing decimal digits.
 
         Returns:
-            The identifier in canonical decimal form.
+            str: The identifier in canonical decimal form.
 
         Raises:
             ValueError: If the identifier is not a positive integer.
@@ -455,12 +458,12 @@ class PlacesClient:
         """Build a canonical request URL from a base, path, and encoded query.
 
         Args:
-            base_url: Validated service root URL.
-            path: Endpoint path to append.
-            query: Already encoded query string.
+            base_url (URL): Validated service root URL.
+            path (str): Endpoint path to append.
+            query (str): Already encoded query string.
 
         Returns:
-            The canonical absolute request URL.
+            str: The canonical absolute request URL.
         """
         return str(URL(f"{base_url}/{path}?{query}"))
 
@@ -477,11 +480,11 @@ class PlacesClient:
         """Fetch, decode, and validate one JSON response.
 
         Args:
-            url: Canonical request URL.
-            operation: Safe operation label for internal debug logs.
+            url (str): Canonical request URL.
+            operation (str): Safe operation label for internal debug logs.
 
         Returns:
-            Parsed recursive JSON value.
+            JSONValue: Parsed recursive JSON value.
 
         Raises:
             HTTPError: If the response has a non-success status.
@@ -523,13 +526,14 @@ class PlacesClient:
         """Return a normalized response while serializing client network access.
 
         Args:
-            url: Canonical request URL and complete cache key.
-            operation: Safe operation label for internal debug logs.
-            normalize: Service-specific response contract validator.
-            use_cache: Whether to read and evict an existing cached response.
+            url (str): Canonical request URL and complete cache key.
+            operation (str): Safe operation label for internal debug logs.
+            normalize (Callable[[JSONValue], JSONMapping | None]):
+                Service-specific response contract validator.
+            use_cache (bool): Whether to read and evict an existing cached response.
 
         Returns:
-            A deep copy of the response mapping, or ``None`` for no result.
+            JSONMapping | None: A deep copy of the response mapping, or ``None`` for no result.
 
         Raises:
             PlacesError: If transport, HTTP, or response validation fails.

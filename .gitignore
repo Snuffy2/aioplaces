@@ -9,3 +9,9 @@ htmlcov/
 dist/
 *.egg-info/
 MEMORY.md
+build/
+coverage.xml
+docs/_build/
+docs/source/_build/
+docs/source/_generated/
+.gem/

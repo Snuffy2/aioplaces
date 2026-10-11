@@ -142,7 +142,12 @@ def test_parse_place_normalizes_only_positive_integer_osm_ids(
     osm_id: object,
     expected: str | None,
 ) -> None:
-    """Normalize positive integer IDs and reject booleans and fractions."""
+    """Normalize positive integer IDs and reject booleans and fractions.
+
+    Args:
+        osm_id (object): Untrusted identifier from a Nominatim payload.
+        expected (str | None): Normalized identifier expected from the parser.
+    """
     assert parse_place({"osm_id": osm_id}).osm_id == expected
 
 
@@ -163,7 +168,11 @@ def test_parse_place_normalizes_only_positive_integer_osm_ids(
     ],
 )
 def test_parse_place_ignores_malformed_shapes_and_scalars(payload: Mapping[str, object]) -> None:
-    """Return a partial result instead of failing on malformed response shapes."""
+    """Return a partial result instead of failing on malformed response shapes.
+
+    Args:
+        payload (Mapping[str, object]): Malformed response mapping to parse.
+    """
     place = parse_place(payload)
 
     assert place.attribution is None
@@ -189,7 +198,12 @@ def test_parse_place_uses_addresstype_for_yes(
     payload: Mapping[str, object],
     expected_type: str | None,
 ) -> None:
-    """Resolve OSM's generic yes type through the addresstype field."""
+    """Resolve OSM's generic yes type through the addresstype field.
+
+    Args:
+        payload (Mapping[str, object]): Response fields containing the generic type.
+        expected_type (str | None): Resolved place type expected from the parser.
+    """
     assert parse_place(payload).place_type == expected_type
 
 
@@ -208,8 +222,8 @@ def test_retail_fallback_preserves_category_case(category: str, expected: str) -
     """Preserve the original case-sensitive retail fallback.
 
     Args:
-        category: Upstream category whose casing controls retail substitution.
-        expected: Place name retained by the reference Places parser.
+        category (str): Upstream category whose casing controls retail substitution.
+        expected (str): Place name retained by the reference Places parser.
     """
     payload = {
         "category": category,

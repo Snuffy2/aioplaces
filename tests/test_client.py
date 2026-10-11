@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from collections.abc import AsyncIterator
+import inspect
 from urllib.parse import urlencode
 
 import aiohttp
+from aioresponses import aioresponses
 import aioresponses.core as aioresponses_core
 import pytest
-from aioresponses import aioresponses
 from yarl import URL
 
 import aioplaces.client as client_module
@@ -47,9 +47,9 @@ class _CompatibleClientResponse(aiohttp.ClientResponse):
         """Supply the stream-writer argument added by aiohttp 3.14.
 
         Args:
-            method: HTTP method for the mocked response.
-            url: Request URL for the mocked response.
-            **kwargs: Remaining constructor arguments from aioresponses.
+            method (str): HTTP method for the mocked response.
+            url (URL): Request URL for the mocked response.
+            **kwargs (object): Remaining constructor arguments from aioresponses.
         """
         kwargs["stream_writer"] = _MockStreamWriter()
         super().__init__(method, url, **kwargs)  # type: ignore[arg-type]
@@ -60,7 +60,7 @@ def patch_aioresponses_response_constructor(monkeypatch: pytest.MonkeyPatch) -> 
     """Bridge only older aioresponses response builders to aiohttp 3.14.
 
     Args:
-        monkeypatch: Pytest patch fixture.
+        monkeypatch (pytest.MonkeyPatch): Pytest patch fixture.
     """
     parameters = inspect.signature(aiohttp.ClientResponse).parameters
     builder_source = inspect.getsource(aioresponses_core.RequestMatch._build_response)
@@ -70,7 +70,11 @@ def patch_aioresponses_response_constructor(monkeypatch: pytest.MonkeyPatch) -> 
 
 @pytest.fixture
 async def session() -> AsyncIterator[aiohttp.ClientSession]:
-    """Provide an open session whose lifecycle belongs to the fixture."""
+    """Provide an open session whose lifecycle belongs to the fixture.
+
+    Yields:
+        aiohttp.ClientSession: Open session owned and closed by this fixture.
+    """
     async with aiohttp.ClientSession() as client_session:
         yield client_session
 
@@ -79,11 +83,11 @@ def make_client(session: aiohttp.ClientSession, **kwargs: object) -> PlacesClien
     """Create a client pointed at local mock endpoints.
 
     Args:
-        session: Session borrowed by the client.
-        **kwargs: Client settings to override.
+        session (aiohttp.ClientSession): Session borrowed by the client.
+        **kwargs (object): Client settings to override.
 
     Returns:
-        A client configured for network-free tests.
+        PlacesClient: A client configured for network-free tests.
     """
     min_request_interval = kwargs.pop("min_request_interval", 0)
     return PlacesClient(
@@ -100,11 +104,11 @@ def reverse_url(*, language: str | None = None, email: str | None = None) -> str
     """Build the expected reverse URL for the test coordinate.
 
     Args:
-        language: Optional language parameter.
-        email: Optional contact email parameter.
+        language (str | None): Optional language parameter.
+        email (str | None): Optional contact email parameter.
 
     Returns:
-        The complete reverse request URL.
+        str: The complete reverse request URL.
     """
     params = list(REVERSE_PARAMS)
     params[3] = ("accept-language", language or "")
@@ -116,10 +120,10 @@ def request_count(mocked: aioresponses) -> int:
     """Return the number of captured mocked HTTP requests.
 
     Args:
-        mocked: Active aioresponses recorder.
+        mocked (aioresponses): Active aioresponses recorder.
 
     Returns:
-        Total captured request count across all URLs.
+        int: Total captured request count across all URLs.
     """
     return sum(len(calls) for calls in mocked.requests.values())
 
@@ -128,7 +132,11 @@ def request_count(mocked: aioresponses) -> int:
 async def test_reverse_preserves_nominatim_parameters_and_session_ownership(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Send configured headers and the reference query without owning the session."""
+    """Send configured headers and the reference query without owning the session.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url(language="en", email="geo@example.org")
     result: JSONMapping = {"name": "Test Place"}
     with aioresponses() as mocked:
@@ -164,7 +172,14 @@ async def test_reverse_preserves_nominatim_parameters_and_session_ownership(
 async def test_lookup_uses_lookup_endpoint_and_one_osm_id(
     session: aiohttp.ClientSession, osm_type: str, osm_id: int | str, osm_prefix: str
 ) -> None:
-    """Use the singular lookup endpoint with the requested OSM type prefix."""
+    """Use the singular lookup endpoint with the requested OSM type prefix.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        osm_type (str): OSM type supplied to the lookup method.
+        osm_id (int | str): Feature identifier supplied to the lookup method.
+        osm_prefix (str): Expected one-letter type prefix and identifier.
+    """
     params = urlencode(
         (
             ("osm_ids", osm_prefix),
@@ -190,7 +205,11 @@ async def test_lookup_uses_lookup_endpoint_and_one_osm_id(
 async def test_wikidata_uses_configured_entity_endpoint(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Build a Wikidata URL from the configured endpoint and return its mapping."""
+    """Build a Wikidata URL from the configured endpoint and return its mapping.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = f"{WIKIDATA}/Q42.json"
     payload: JSONMapping = {"entities": {"Q42": {"id": "Q42"}}}
     with aioresponses() as mocked:
@@ -218,7 +237,14 @@ async def test_wikidata_response_contract(
     payload: object,
     expected: JSONMapping | None | type[InvalidResponseError],
 ) -> None:
-    """Return empty Wikidata results as no-result and reject non-object payloads."""
+    """Return empty Wikidata results as no-result and reject non-object payloads.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        payload (object): Response shape returned by the service.
+        expected (JSONMapping | None | type[InvalidResponseError]):
+            Normalized result or expected exception.
+    """
     url = f"{WIKIDATA}/Q42.json"
     with aioresponses() as mocked:
         if payload is None:
@@ -249,7 +275,13 @@ async def test_wikidata_response_contract(
 async def test_reverse_rejects_invalid_coordinates(
     session: aiohttp.ClientSession, latitude: float, longitude: float
 ) -> None:
-    """Reject invalid coordinates before making a request."""
+    """Reject invalid coordinates before making a request.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        latitude (float): Invalid latitude supplied to the request.
+        longitude (float): Invalid longitude supplied to the request.
+    """
     client = make_client(session)
     with pytest.raises(ValueError):
         await client.reverse(latitude, longitude)
@@ -263,7 +295,13 @@ async def test_reverse_rejects_invalid_coordinates(
 async def test_lookup_rejects_invalid_type_or_identifier(
     session: aiohttp.ClientSession, osm_type: str, osm_id: int | str
 ) -> None:
-    """Reject invalid OSM identifiers before sending a request."""
+    """Reject invalid OSM identifiers before sending a request.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        osm_type (str): Invalid OSM type supplied to the request.
+        osm_id (int | str): Invalid identifier supplied to the request.
+    """
     client = make_client(session)
     with pytest.raises(ValueError):
         await client.lookup(osm_type, osm_id)
@@ -274,7 +312,12 @@ async def test_lookup_rejects_invalid_type_or_identifier(
 async def test_wikidata_rejects_invalid_identifier(
     session: aiohttp.ClientSession, wikidata_id: str
 ) -> None:
-    """Reject identifiers outside the Wikidata Q-number form."""
+    """Reject identifiers outside the Wikidata Q-number form.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        wikidata_id (str): Invalid identifier supplied to the request.
+    """
     client = make_client(session)
     with pytest.raises(ValueError):
         await client.wikidata(wikidata_id)
@@ -299,7 +342,14 @@ async def test_reverse_response_contract(
     payload: object,
     expected: JSONMapping | None | type[InvalidResponseError],
 ) -> None:
-    """Normalize valid no-result cases and reject unsupported service responses."""
+    """Normalize valid no-result cases and reject unsupported service responses.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        payload (object): Response shape returned by Nominatim.
+        expected (JSONMapping | None | type[InvalidResponseError]):
+            Normalized result or expected exception.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         if payload is None:
@@ -332,7 +382,14 @@ async def test_lookup_response_contract(
     payload: object,
     expected: JSONMapping | None | type[InvalidResponseError],
 ) -> None:
-    """Accept no more than one mapping in the Nominatim lookup response."""
+    """Accept no more than one mapping in the Nominatim lookup response.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        payload (object): Response shape returned by Nominatim.
+        expected (JSONMapping | None | type[InvalidResponseError]):
+            Normalized result or expected exception.
+    """
     params = urlencode(
         (
             ("osm_ids", "N1"),
@@ -359,7 +416,11 @@ async def test_lookup_response_contract(
 async def test_http_error_exposes_retry_after_and_does_not_retry(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Raise the typed HTTP error with response metadata after one request."""
+    """Raise the typed HTTP error with response metadata after one request.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, status=429, headers={"Retry-After": "30"})
@@ -377,7 +438,11 @@ async def test_http_error_exposes_retry_after_and_does_not_retry(
 async def test_invalid_json_and_transport_failure_use_typed_errors(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Translate malformed JSON and network timeout into public exceptions."""
+    """Translate malformed JSON and network timeout into public exceptions.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, body="{broken", content_type="application/json")
@@ -398,14 +463,22 @@ async def test_invalid_json_and_transport_failure_use_typed_errors(
 async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Cache one concurrent response and keep caller mutations isolated."""
+    """Cache one concurrent response and keep caller mutations isolated.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, payload={"nested": {"values": [1]}})
         client = make_client(session)
         first, second = await asyncio.gather(client.reverse(40, -70), client.reverse(40, -70))
         assert first is not None
-        first["nested"]["values"].append(2)  # type: ignore[index,union-attr]
+        nested = first["nested"]
+        assert isinstance(nested, dict)
+        values = nested["values"]
+        assert isinstance(values, list)
+        values.append(2)
         third = await client.reverse(40, -70)
 
     assert second == {"nested": {"values": [1]}}
@@ -417,7 +490,11 @@ async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
 async def test_cache_key_includes_language_and_contact_options(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Keep responses for different request options under distinct cache keys."""
+    """Keep responses for different request options under distinct cache keys.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     english_url = reverse_url(language="en", email="one@example.org")
     french_url = reverse_url(language="fr", email="one@example.org")
     with aioresponses() as mocked:
@@ -442,11 +519,20 @@ async def test_cache_key_includes_language_and_contact_options(
 async def test_cache_expiry_uses_the_monotonic_clock(
     session: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Expire a cached response when the controlled monotonic clock advances."""
+    """Expire a cached response when the controlled monotonic clock advances.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        monkeypatch (pytest.MonkeyPatch): Fixture used to replace the module clock.
+    """
     now = 100.0
 
     def clock() -> float:
-        """Return the controlled cache clock value."""
+        """Return the current simulated cache time.
+
+        Returns:
+            float: Current time used by the cache.
+        """
         return now
 
     monkeypatch.setattr(client_module, "monotonic", clock)
@@ -467,7 +553,11 @@ async def test_cache_expiry_uses_the_monotonic_clock(
 async def test_forced_failed_refresh_preserves_cached_success(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Keep a prior success available when a cache-bypassing refresh fails."""
+    """Keep a prior success available when a cache-bypassing refresh fails.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, payload={"name": "cached"})
@@ -486,7 +576,11 @@ async def test_forced_failed_refresh_preserves_cached_success(
 async def test_forced_no_result_evicts_cached_success(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Remove an older cache entry when a forced refresh finds no result."""
+    """Remove an older cache entry when a forced refresh finds no result.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, payload={"name": "old"})
@@ -505,16 +599,29 @@ async def test_forced_no_result_evicts_cached_success(
 async def test_serialized_requests_wait_for_the_configured_interval(
     session: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Apply deterministic spacing between network calls from one client."""
+    """Apply deterministic spacing between network calls from one client.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        monkeypatch (pytest.MonkeyPatch): Fixture used to replace clock and sleep.
+    """
     now = 0.0
     waits: list[float] = []
 
     def clock() -> float:
-        """Return the controlled request clock value."""
+        """Return the current simulated request time.
+
+        Returns:
+            float: Current time used by request spacing.
+        """
         return now
 
     async def advance(seconds: float) -> None:
-        """Record a throttle wait and advance the controlled clock."""
+        """Record a throttle wait and advance the controlled clock.
+
+        Args:
+            seconds (float): Wait duration requested by the client.
+        """
         nonlocal now
         waits.append(seconds)
         now += seconds
@@ -538,7 +645,11 @@ async def test_serialized_requests_wait_for_the_configured_interval(
 async def test_cancelling_a_queued_call_releases_the_lock(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Propagate queued task cancellation without leaving the lock held."""
+    """Propagate queued task cancellation without leaving the lock held.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, payload={"name": "ok"})
@@ -560,7 +671,11 @@ async def test_cancelling_a_queued_call_releases_the_lock(
 async def test_inflight_cancellation_propagates_and_releases_the_lock(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Propagate cancellation from the transport and permit a subsequent call."""
+    """Propagate cancellation from the transport and permit a subsequent call.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     url = reverse_url()
     with aioresponses() as mocked:
         mocked.get(url, exception=asyncio.CancelledError())
@@ -593,7 +708,13 @@ async def test_inflight_cancellation_propagates_and_releases_the_lock(
 async def test_invalid_client_settings_raise_value_error(
     session: aiohttp.ClientSession, setting: str, value: object
 ) -> None:
-    """Reject invalid numeric settings and unsafe service base URLs."""
+    """Reject invalid numeric settings and unsafe service base URLs.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        setting (str): Client setting overridden with invalid input.
+        value (object): Invalid value passed for that setting.
+    """
     kwargs: dict[str, object] = {
         "base_url": NOMINATIM,
         "user_agent": USER_AGENT,
@@ -613,7 +734,12 @@ async def test_public_host_rejects_subsecond_spacing(
     session: aiohttp.ClientSession,
     base_url: str,
 ) -> None:
-    """Require the public service minimum while allowing private local hosts."""
+    """Require the public service minimum while allowing private local hosts.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        base_url (str): Public service hostname under test.
+    """
     with pytest.raises(ValueError, match="at least 1 second"):
         PlacesClient(
             session,
@@ -628,7 +754,11 @@ async def test_public_host_rejects_subsecond_spacing(
 async def test_custom_and_private_hosts_allow_configured_intervals(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Allow private and custom provider URLs to use a zero or short interval."""
+    """Allow private and custom provider URLs to use a zero or short interval.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     PlacesClient(
         session,
         base_url=NOMINATIM,
@@ -648,7 +778,11 @@ async def test_custom_and_private_hosts_allow_configured_intervals(
 async def test_user_agent_rejects_header_line_breaks(
     session: aiohttp.ClientSession,
 ) -> None:
-    """Reject CR/LF header injection while client configuration is constructed."""
+    """Reject CR/LF header injection while client configuration is constructed.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+    """
     with pytest.raises(ValueError):
         PlacesClient(
             session,

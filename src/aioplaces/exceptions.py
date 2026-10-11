@@ -23,8 +23,8 @@ class HTTPError(PlacesError):
         """Create an HTTP error with its response metadata.
 
         Args:
-            status: The HTTP response status code.
-            retry_after: The unmodified ``Retry-After`` response header.
+            status (int): The HTTP response status code.
+            retry_after (str | None): The unmodified ``Retry-After`` response header.
         """
         self.status: int = status
         self.retry_after: str | None = retry_after
