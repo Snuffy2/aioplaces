@@ -30,6 +30,14 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.base.sha }}
 
+      - name: Setup Python for trusted authorization helper
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login == 'dependabot[bot]'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
       - name: Authorize Dependabot update before checkout
         if: >-
           github.event_name == 'pull_request' &&
@@ -60,7 +68,7 @@ jobs:
                 >> "${ancestry_proof_items}"
           done < <(jq -r '.[].[] | select(.parents | length == 2) | .parents[1].sha' "${commits}")
           jq -s . "${ancestry_proof_items}" > "${ancestry_proofs}"
-          node .github/scripts/dependabot-auto-merge.mjs \
+          python .github/scripts/dependabot_auto_merge.py \
             "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}" "${ancestry_proofs}"
 
       - name: Checkout Repository

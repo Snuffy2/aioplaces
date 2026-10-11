@@ -4,10 +4,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
-AUTHORIZER = Path(__file__).parents[1] / ".github" / "scripts" / "dependabot-auto-merge.mjs"
+AUTHORIZER = Path(__file__).parents[1] / ".github" / "scripts" / "dependabot_auto_merge.py"
 BOT = "dependabot[bot]"
 REPOSITORY = "example/aioplaces"
 HEAD_SHA = "a" * 40
@@ -80,6 +81,7 @@ def _run_authorizer(
     ancestry_proofs: list[dict[str, object]] | None = None,
     changed_files: list[str],
     commits: list[dict[str, object]],
+    commit_page_size: int = 100,
     event: dict[str, object],
 ) -> subprocess.CompletedProcess[str]:
     """Run the workflow authorizer with representative API fixture files.
@@ -91,10 +93,11 @@ def _run_authorizer(
             evidence returned by the compare API.
         changed_files (list[str]): Changed-file API results.
         commits (list[dict[str, object]]): Pull-request commit API results.
+        commit_page_size (int): Maximum commits per API response page.
         event (dict[str, object]): Pull-request webhook event.
 
     Returns:
-        subprocess.CompletedProcess[str]: Completed Node process result.
+        subprocess.CompletedProcess[str]: Completed Python process result.
     """
     event_path = tmp_path / "event.json"
     changed_files_path = tmp_path / "changed-files"
@@ -102,12 +105,16 @@ def _run_authorizer(
     ancestry_proofs_path = tmp_path / "ancestry-proofs.json"
     event_path.write_text(json.dumps(event), encoding="utf-8")
     changed_files_path.write_text("\n".join(changed_files), encoding="utf-8")
-    commits_path.write_text(json.dumps([commits]), encoding="utf-8")
+    commit_pages = [
+        commits[index : index + commit_page_size]
+        for index in range(0, len(commits), commit_page_size)
+    ]
+    commits_path.write_text(json.dumps(commit_pages), encoding="utf-8")
     ancestry_proofs_path.write_text(json.dumps(ancestry_proofs or []), encoding="utf-8")
     environment = {**os.environ, "GITHUB_ACTOR": actor}
     return subprocess.run(
         [
-            "node",
+            sys.executable,
             str(AUTHORIZER),
             str(event_path),
             str(changed_files_path),
@@ -138,6 +145,44 @@ def test_authorizer_accepts_reopened_verified_uv_lockfile_update(tmp_path: Path)
     )
 
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize(
+    ("section", "key", "value"),
+    [
+        ("repository", "fork", True),
+        ("repository", "full_name", "other/repository"),
+        ("repository", "default_branch", "other-branch"),
+        ("user", "login", "maintainer"),
+        ("head", "sha", "c" * 40),
+        ("head", "ref", "feature/untrusted"),
+    ],
+)
+def test_authorizer_rejects_untrusted_event_provenance(
+    tmp_path: Path, section: str, key: str, value: str | bool
+) -> None:
+    """Refuse auto-merge when webhook provenance or head identity is invalid.
+
+    Args:
+        tmp_path (Path): Isolated trusted-base directory.
+        section (str): Webhook object to modify.
+        key (str): Provenance field to modify.
+        value (str | bool): Untrusted field value.
+    """
+    _write_trusted_file(tmp_path, "uv.lock")
+    event = _event(action="opened", ref="dependabot/uv/dependency-update")
+    target = event["repository"] if section == "repository" else event["pull_request"][section]
+    target[key] = value
+    result = _run_authorizer(
+        tmp_path,
+        actor=BOT,
+        changed_files=["uv.lock"],
+        commits=[_dependabot_commit()],
+        event=event,
+    )
+
+    assert result.returncode != 0
+    assert "Refusing auto-merge;" in result.stderr
 
 
 @pytest.mark.parametrize("committer", [None, "maintainer"])
@@ -246,11 +291,20 @@ def test_authorizer_trusts_only_existing_actions_files(
     assert (result.returncode == 0) is authorized
 
 
-def test_authorizer_accepts_verified_update_branch_history(tmp_path: Path) -> None:
-    """Authorize an update-branch merge that preserves trusted history.
+@pytest.mark.parametrize(
+    ("ahead_by", "behind_by", "authorized"),
+    [(0, 0, True), (0.0, 0.0, True), (True, 0, False), (0, False, False), (0.5, 0, False)],
+)
+def test_authorizer_validates_paginated_update_branch_history(
+    tmp_path: Path, ahead_by: int | float | bool, behind_by: int | float | bool, authorized: bool
+) -> None:
+    """Validate update-branch ancestry counts across paginated commit history.
 
     Args:
         tmp_path (Path): Isolated trusted-base directory.
+        ahead_by (int | float | bool): Compare API ahead count.
+        behind_by (int | float | bool): Compare API behind count.
+        authorized (bool): Expected authorization outcome.
     """
     _write_trusted_file(tmp_path, "uv.lock")
     original_sha = "c" * 40
@@ -269,10 +323,10 @@ def test_authorizer_accepts_verified_update_branch_history(tmp_path: Path) -> No
         actor="arbitrary-actor",
         ancestry_proofs=[
             {
-                "ahead_by": 0,
+                "ahead_by": ahead_by,
                 "base_commit": BASE_SHA,
                 "base_sha": BASE_SHA,
-                "behind_by": 0,
+                "behind_by": behind_by,
                 "head_commit": BASE_SHA,
                 "merge_base_commit": BASE_SHA,
                 "parent_sha": BASE_SHA,
@@ -281,10 +335,11 @@ def test_authorizer_accepts_verified_update_branch_history(tmp_path: Path) -> No
         ],
         changed_files=["uv.lock"],
         commits=[_dependabot_commit(original_sha), update_commit],
+        commit_page_size=1,
         event=event,
     )
 
-    assert result.returncode == 0
+    assert (result.returncode == 0) is authorized
 
 
 @pytest.mark.parametrize("committer", [None, "maintainer"])
