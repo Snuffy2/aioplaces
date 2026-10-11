@@ -58,13 +58,41 @@ jobs:
             echo "Release tag must identify a default-branch commit." >&2
             exit 1
           fi
-          grep -Fx "VERSION = \"$RELEASE_TAG\"  # x-release-please-version" \
-            src/aioplaces/const.py >/dev/null
+          if [[ "$IS_PRERELEASE" == "false" ]]; then
+            if ! grep -Fx "VERSION = \"$RELEASE_TAG\"  # x-release-please-version" \
+              src/aioplaces/const.py >/dev/null; then
+              echo "Release tag $RELEASE_TAG does not match VERSION in src/aioplaces/const.py." >&2
+              echo "Update the package version before tagging the release commit." >&2
+              exit 1
+            fi
+          fi
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.14"
+
+      - name: Set prerelease distribution version
+        if: github.event.release.prerelease
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          uv run --no-project python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+
+          path = Path("src/aioplaces/const.py")
+          source, count = re.subn(
+              r'^VERSION = "[^"]+"  # x-release-please-version$',
+              f'VERSION = "{os.environ["RELEASE_TAG"]}"  # x-release-please-version',
+              path.read_text(encoding="utf-8"),
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("Expected exactly one package VERSION declaration.")
+          path.write_text(source, encoding="utf-8")
+          PY
 
       - name: Build and check distributions
         run: |
