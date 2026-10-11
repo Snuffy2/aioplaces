@@ -103,13 +103,14 @@ Both tools support the following options.
 
 ### Exit status and request behavior
 
-Each invocation makes at most one request. Requests use TLS verification, do not
-follow redirects, and are not automatically retried. Both tools exit nonzero for
-invalid arguments, network failures, or output errors. The library tool also
-exits nonzero for HTTP or response validation errors; no result is a successful
-`null` response. The raw tool exits `1` for any HTTP status outside 200–299, while
-still printing the response. A service error inside an HTTP 200 body remains a
-raw HTTP success; inspect `json`/`text` for its meaning.
+Each invocation makes at most one request. HTTPS requests use certificate
+verification; requests do not follow redirects and are not automatically retried.
+Both tools exit nonzero for invalid arguments, network failures, or output errors.
+The library tool also exits nonzero for HTTP or response validation errors; no
+result is a successful `null` response. The raw tool exits `1` for any HTTP
+status outside 200–299, while still printing the response. A service error
+inside an HTTP 200 body remains a raw HTTP success; inspect `json`/`text` for
+its meaning.
 
 Follow the upstream usage policies documented in the project's documentation.
 For public Nominatim, leave at least one second between requests, including

@@ -159,6 +159,8 @@ async def test_raw_http_error(capsys: pytest.CaptureFixture[str]) -> None:
         (b'{"number": NaN}', "application/json; charset=utf-8", '{"number": NaN}'),
         (b'{"number": Infinity}', "application/json; charset=utf-8", '{"number": Infinity}'),
         (b'{"number": -Infinity}', "application/json; charset=utf-8", '{"number": -Infinity}'),
+        (b'{"number": 1e400}', "application/json; charset=utf-8", '{"number": 1e400}'),
+        (b'{"number": -1e400}', "application/json; charset=utf-8", '{"number": -1e400}'),
     ],
 )
 async def test_raw_http_error_unusual_body(
@@ -193,6 +195,30 @@ async def test_raw_http_error_unusual_body(
     assert result["headers"]["Retry-After"] == "5"
     assert result["json"] is None
     assert result["text"] == expected_text
+
+
+async def test_raw_http_error_valid_numeric_json(capsys: pytest.CaptureFixture[str]) -> None:
+    """Decode valid finite JSON numbers in a raw response.
+
+    Args:
+        capsys (pytest.CaptureFixture[str]): Captured command output.
+    """
+    with aioresponses() as mocked:
+        mocked.get(
+            f"{ENTITY_BASE}/Q243.json",
+            status=200,
+            body=b'{"number": 1.25}',
+            headers={"Content-Type": "application/json"},
+        )
+        assert (
+            await osm_api_call.async_main(
+                COMMON + ["--endpoint", "wikidata", "--wikidata-id", "Q243"]
+            )
+            == 0
+        )
+    result = json.loads(capsys.readouterr().out)
+    assert result["json"] == {"number": 1.25}
+    assert result["text"] == '{"number": 1.25}'
 
 
 async def test_library_no_result(capsys: pytest.CaptureFixture[str]) -> None:

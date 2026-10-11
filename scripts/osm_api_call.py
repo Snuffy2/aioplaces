@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 
 import aiohttp
 
@@ -21,6 +22,24 @@ def reject_json_constant(value: str) -> None:
         ValueError: Always, because the constant is not valid JSON.
     """
     raise ValueError(f"Invalid JSON constant: {value}")
+
+
+def finite_json_float(value: str) -> float:
+    """Decode a JSON number only when it is finite.
+
+    Args:
+        value (str): Number token from the response body.
+
+    Returns:
+        float: The decoded finite number.
+
+    Raises:
+        ValueError: If decoding produces a non-finite value.
+    """
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"Non-finite JSON number: {value}")
+    return number
 
 
 def request_target(args: argparse.Namespace) -> tuple[str, dict[str, str]]:
@@ -73,7 +92,11 @@ async def async_main(argv: list[str] | None = None) -> int:
         ) as response:
             body = await response.text(errors="replace")
             try:
-                payload = json.loads(body, parse_constant=reject_json_constant)
+                payload = json.loads(
+                    body,
+                    parse_constant=reject_json_constant,
+                    parse_float=finite_json_float,
+                )
             except ValueError:
                 payload = None
             result = {
