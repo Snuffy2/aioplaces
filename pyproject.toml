@@ -30,6 +30,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/Snuffy2/aioplaces"
+Documentation = "https://aioplaces.readthedocs.io"
 Repository = "https://github.com/Snuffy2/aioplaces"
 Issues = "https://github.com/Snuffy2/aioplaces/issues"
 
