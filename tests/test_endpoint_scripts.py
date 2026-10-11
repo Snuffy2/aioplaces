@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import sys
 
 from aioresponses import aioresponses
 import pytest
@@ -150,6 +151,51 @@ async def test_raw_http_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert result["json"] is None
     assert result["text"] == "Slow down"
     assert result["headers"]["Retry-After"] == "5"
+
+
+def test_raw_output_file_failure_preserves_http_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """Print received raw diagnostics before reporting an output-file failure.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Set CLI arguments for the entry point.
+        capsys (pytest.CaptureFixture[str]): Captured command output.
+        tmp_path (Path): Temporary output directory.
+    """
+    output = tmp_path / "missing" / "result.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "osm_api_call.py",
+            *COMMON,
+            "--endpoint",
+            "wikidata",
+            "--wikidata-id",
+            "Q243",
+            "--output",
+            str(output),
+        ],
+    )
+    with aioresponses() as mocked:
+        mocked.get(
+            f"{ENTITY_BASE}/Q243.json",
+            status=429,
+            body="Slow down",
+            headers={"Retry-After": "5"},
+        )
+        with pytest.raises(SystemExit) as raised:
+            osm_api_call.main()
+        assert sum(len(calls) for calls in mocked.requests.values()) == 1
+    assert str(raised.value.code).startswith("FileNotFoundError:")
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == 429
+    assert result["headers"]["Retry-After"] == "5"
+    assert result["json"] is None
+    assert result["text"] == "Slow down"
 
 
 @pytest.mark.parametrize(

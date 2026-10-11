@@ -106,6 +106,7 @@ Both tools support the following options.
 Each invocation makes at most one request. HTTPS requests use certificate
 verification; requests do not follow redirects and are not automatically retried.
 Both tools exit nonzero for invalid arguments, network failures, or output errors.
+An output-file error still prints the received result to stdout before exiting.
 The library tool also exits nonzero for HTTP or response validation errors; no
 result is a successful `null` response. The raw tool exits `1` for any HTTP
 status outside 200–299, while still printing the response. A service error

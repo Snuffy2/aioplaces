@@ -136,8 +136,15 @@ def write_output(result: object, output: Path | None) -> None:
     Args:
         result (object): JSON-serializable result.
         output (Path | None): Optional destination file.
+
+    Raises:
+        OSError: If saving the result fails after it is printed to stdout.
     """
     text = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     if output is not None:
-        output.write_text(text, encoding="utf-8")
+        try:
+            output.write_text(text, encoding="utf-8")
+        except OSError:
+            print(text, end="")
+            raise
     print(text, end="")
