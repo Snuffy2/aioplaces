@@ -11,6 +11,18 @@ import aiohttp
 from scripts._common import parse_args, write_output
 
 
+def reject_json_constant(value: str) -> None:
+    """Reject a non-finite numeric constant from a JSON response.
+
+    Args:
+        value (str): Non-finite constant found in the response body.
+
+    Raises:
+        ValueError: Always, because the constant is not valid JSON.
+    """
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
 def request_target(args: argparse.Namespace) -> tuple[str, dict[str, str]]:
     """Build the upstream request corresponding to the selected library method.
 
@@ -59,9 +71,9 @@ async def async_main(argv: list[str] | None = None) -> int:
             allow_redirects=False,
             raise_for_status=False,
         ) as response:
-            body = await response.text()
+            body = await response.text(errors="replace")
             try:
-                payload = json.loads(body)
+                payload = json.loads(body, parse_constant=reject_json_constant)
             except ValueError:
                 payload = None
             result = {

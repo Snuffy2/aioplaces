@@ -152,6 +152,49 @@ async def test_raw_http_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert result["headers"]["Retry-After"] == "5"
 
 
+@pytest.mark.parametrize(
+    ("body", "content_type", "expected_text"),
+    [
+        (b"\xff", "text/plain; charset=utf-8", "\ufffd"),
+        (b'{"number": NaN}', "application/json; charset=utf-8", '{"number": NaN}'),
+        (b'{"number": Infinity}', "application/json; charset=utf-8", '{"number": Infinity}'),
+        (b'{"number": -Infinity}', "application/json; charset=utf-8", '{"number": -Infinity}'),
+    ],
+)
+async def test_raw_http_error_unusual_body(
+    body: bytes,
+    content_type: str,
+    expected_text: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Preserve HTTP diagnostics for undecodable and non-standard JSON bodies.
+
+    Args:
+        body (bytes): Mock response bytes.
+        content_type (str): Declared response media type and encoding.
+        expected_text (str): Body text retained by the diagnostic output.
+        capsys (pytest.CaptureFixture[str]): Captured command output.
+    """
+    with aioresponses() as mocked:
+        mocked.get(
+            f"{ENTITY_BASE}/Q243.json",
+            status=429,
+            body=body,
+            headers={"Content-Type": content_type, "Retry-After": "5"},
+        )
+        assert (
+            await osm_api_call.async_main(
+                COMMON + ["--endpoint", "wikidata", "--wikidata-id", "Q243"]
+            )
+            == 1
+        )
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == 429
+    assert result["headers"]["Retry-After"] == "5"
+    assert result["json"] is None
+    assert result["text"] == expected_text
+
+
 async def test_library_no_result(capsys: pytest.CaptureFixture[str]) -> None:
     """Report a missing feature as a successful null result.
 
