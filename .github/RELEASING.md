@@ -33,6 +33,13 @@ workflow. These tokens are separate from `RELEASE_PLEASE_TOKEN`.
 
 ## Stable releases
 
+The initial `v0.1.0` release is recorded as `0.1.0` in
+`.release-please-manifest.json`. The `bootstrap-sha` in
+`release-please-config.json` points to that release's commit, so the first
+automated release includes only commits merged after `v0.1.0`. Once Release
+Please creates a subsequent release, it uses that release as the cutoff and
+ignores `bootstrap-sha`.
+
 1. Merge release-ready changes into `main`. Use Conventional Commit subjects:
    `fix:` indicates a patch, `feat:` indicates a minor release, and a
    `BREAKING CHANGE:` footer or `!` after the type indicates a major release.
