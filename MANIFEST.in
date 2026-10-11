@@ -1,4 +1,4 @@
 include LICENSE README.md CHANGELOG.md
 recursive-include src/aioplaces *.py py.typed
 recursive-include tests *.py
-recursive-include .github/scripts *.py *.mjs
+recursive-include .github/scripts *.py
