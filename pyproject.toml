@@ -42,18 +42,14 @@ docs = [
 
 [dependency-groups]
 lint = [
-    "aiohttp<4",
     "mypy",
     "prek",
     "ruff",
     "types-cachetools>=6",
-    "types-PyYAML",
-    "types-setuptools",
     "uv",
 ]
 pytest = [
     "aioresponses>=0.7.8",
-    "aiohttp<4",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
@@ -136,12 +132,8 @@ force-sort-within-sections = true
 combine-as-imports = true
 split-on-trailing-comma = false
 
-[tool.ruff.lint.mccabe]
-max-complexity = 25
-
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-property-decorators = ["propcache.api.cached_property"]
 
 [tool.mypy]
 python_version = "3.14"
