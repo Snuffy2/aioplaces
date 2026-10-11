@@ -20,7 +20,7 @@ API reference, upstream usage policies, and development.
 
 The publish workflow uses
 PyPI Trusted Publishing: stable GitHub Releases go to PyPI and prereleases go
-to TestPyPI. No package has been published yet.
+to TestPyPI.
 
 ## Origin and license
 
