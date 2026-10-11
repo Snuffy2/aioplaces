@@ -140,8 +140,7 @@ Coverage must reach 80 percent.
 ## Releases
 
 Release automation and repository setup are described in
-[.github/RELEASING.md](.github/RELEASING.md). Release Please is gated by the
-repository variable `RELEASE_PLEASE_ENABLED=true`. The publish workflow uses
+[.github/RELEASING.md](.github/RELEASING.md). The publish workflow uses
 PyPI Trusted Publishing: stable GitHub Releases go to PyPI and prereleases go
 to TestPyPI. No package has been published yet.
 

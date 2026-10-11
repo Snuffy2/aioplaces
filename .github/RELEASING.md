@@ -8,10 +8,8 @@ publishes them through PyPI Trusted Publishing.
 ## One-time repository setup
 
 Create a repository-scoped Actions secret named `RELEASE_PLEASE_TOKEN` with
-contents and pull request write access for this repository. The Release Please
-workflow also requires the repository variable `RELEASE_PLEASE_ENABLED` to be
-exactly `true`; enable it after the token is configured and release automation
-is ready. The workflow skips forks and is gated by that opt-in variable.
+contents and pull request write access for this repository. The workflow runs
+automatically on pushes to `main` and skips forks.
 
 Register the PyPI Trusted Publisher for owner `Snuffy2`, repository
 `aioplaces`, workflow filename `publish-pypi.yml`, and GitHub environment
@@ -39,8 +37,8 @@ workflow. These tokens are separate from `RELEASE_PLEASE_TOKEN`.
    `fix:` indicates a patch, `feat:` indicates a minor release, and a
    `BREAKING CHANGE:` footer or `!` after the type indicates a major release.
 2. After a push to `main`, Release Please creates or updates a release pull
-   request when `RELEASE_PLEASE_ENABLED` is `true`. Review the version and root
-   `CHANGELOG.md`, then let the normal checks pass.
+   request. Review the version and root `CHANGELOG.md`, then let the normal
+   checks pass.
 3. Merge the release pull request. Release Please creates the matching
    `v`-prefixed tag and GitHub Release.
 4. The published release event starts the `Publish Python Distribution`
@@ -71,9 +69,8 @@ manual dispatch trigger.
 
 If Release Please does not create or update its pull request, first check
 whether the merged commits require a release. Then confirm the push was to
-`main`, `RELEASE_PLEASE_ENABLED` is exactly `true`, and
-`RELEASE_PLEASE_TOKEN` is present, valid, and authorized to write contents and
-pull requests. Read the failed run log, correct the repository setting or
+`main` and `RELEASE_PLEASE_TOKEN` is present, valid, and authorized to write
+contents and pull requests. Read the failed run log, correct the repository setting or
 secret, then rerun the workflow.
 
 If distribution validation fails, inspect the published release and the commit

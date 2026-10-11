@@ -53,4 +53,4 @@ Home Assistant. Do not use global Python tooling in place of the repository's
 
 - Never push directly to `main`. Do not push any branch, publish to PyPI, or open pull requests unless the user explicitly requests it.
 - Keep release versions aligned between `src/aioplaces/const.py`, release tags, and the release manifest.
-- Repository automation needs externally configured GitHub secrets, variables, environments, and PyPI Trusted Publishers; see [`.github/RELEASING.md`](.github/RELEASING.md).
+- Repository automation needs externally configured GitHub secrets, environments, and PyPI Trusted Publishers; see [`.github/RELEASING.md`](.github/RELEASING.md).

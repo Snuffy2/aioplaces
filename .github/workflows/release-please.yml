@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   release-please:
-    if: github.event.repository.fork == false && vars.RELEASE_PLEASE_ENABLED == 'true'
+    if: github.event.repository.fork == false
     runs-on: ubuntu-latest
     steps:
       - name: Create or update the release pull request
