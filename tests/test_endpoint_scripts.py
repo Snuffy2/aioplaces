@@ -27,6 +27,7 @@ COMMON = [
 
 
 @pytest.mark.parametrize("raw", [False, True])
+@pytest.mark.parametrize("user_agent", [None, "places-tests/1.0 (test@example.com)"])
 @pytest.mark.parametrize(
     ("endpoint", "arguments", "payload", "expected", "query"),
     [
@@ -55,6 +56,8 @@ COMMON = [
 )
 async def test_endpoint_requests(
     raw: bool,
+    user_agent: str | None,
+    monkeypatch: pytest.MonkeyPatch,
     endpoint: str,
     arguments: list[str],
     payload: object,
@@ -67,6 +70,8 @@ async def test_endpoint_requests(
 
     Args:
         raw (bool): Whether to run the direct HTTP tool.
+        user_agent (str | None): Explicit override, or use the built-in default.
+        monkeypatch (pytest.MonkeyPatch): Isolate the default from environment overrides.
         endpoint (str): Selected operation.
         arguments (list[str]): Endpoint-specific arguments.
         payload (object): Mock upstream JSON.
@@ -75,17 +80,23 @@ async def test_endpoint_requests(
         tmp_path (Path): Temporary output directory.
         capsys (pytest.CaptureFixture[str]): Captured command output.
     """
+    monkeypatch.delenv("AIOPLACES_USER_AGENT", raising=False)
+    configuration = COMMON[:-2]
+    if user_agent is not None:
+        configuration = configuration + ["--user-agent", user_agent]
     target = f"{ENTITY_BASE}/Q243.json" if endpoint == "wikidata" else f"{BASE}/{endpoint}"
     output = tmp_path / "result.json"
     with aioresponses() as mocked:
         mocked.get(re.compile(re.escape(target) + r"(?:\?.*)?$"), payload=payload)
         command = osm_api_call.async_main if raw else aioplaces_dump.async_main
         status = await command(
-            COMMON + ["--endpoint", endpoint, "--output", str(output)] + arguments
+            configuration + ["--endpoint", endpoint, "--output", str(output)] + arguments
         )
         request_url = next(iter(mocked.requests))[1]
         request = next(iter(mocked.requests.values()))[0]
-        assert request.kwargs["headers"]["User-Agent"] == COMMON[-1]
+        assert request.kwargs["headers"]["User-Agent"] == (
+            user_agent or "aioplaces-endpoint-scripts/1.0"
+        )
         assert request.kwargs["allow_redirects"] is False
         assert request.kwargs["timeout"].total == 10
         for key, value in query.items():

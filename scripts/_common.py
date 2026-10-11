@@ -11,6 +11,8 @@ import re
 
 from yarl import URL
 
+DEFAULT_USER_AGENT = "aioplaces-endpoint-scripts/1.0"
+
 
 def base_url(value: str) -> str:
     """Validate a service root URL.
@@ -86,7 +88,11 @@ def parse_args(description: str, argv: list[str] | None = None) -> argparse.Name
         type=base_url,
         default="https://www.wikidata.org/wiki/Special:EntityData",
     )
-    parser.add_argument("--user-agent", default=os.environ.get("AIOPLACES_USER_AGENT"))
+    parser.add_argument(
+        "--user-agent",
+        default=os.environ.get("AIOPLACES_USER_AGENT", DEFAULT_USER_AGENT),
+        help=f"Identifying User-Agent (default: {DEFAULT_USER_AGENT})",
+    )
     parser.add_argument("--timeout", type=positive_timeout, default=10.0)
     parser.add_argument("--latitude", type=float)
     parser.add_argument("--longitude", type=float)
