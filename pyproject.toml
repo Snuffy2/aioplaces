@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aioplaces"
+version = "0.1.0"
+description = "Async Nominatim and Wikidata client with typed place parsing"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{name = "Snuffy2"}]
+keywords = ["nominatim", "openstreetmap", "geocoding", "asyncio", "wikidata"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: AsyncIO",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: GIS",
+  "Typing :: Typed",
+]
+dependencies = ["aiohttp>=3.13", "cachetools>=6", "yarl>=1.20"]
+
+[project.urls]
+Homepage = "https://github.com/Snuffy2/aioplaces"
+Repository = "https://github.com/Snuffy2/aioplaces"
+Issues = "https://github.com/Snuffy2/aioplaces/issues"
+
+[dependency-groups]
+dev = [
+  "aioresponses>=0.7.8",
+  "mypy>=1.19",
+  "prek>=0.3",
+  "pytest>=9",
+  "pytest-asyncio>=1",
+  "pytest-cov>=7",
+  "ruff>=0.14",
+  "types-cachetools>=6",
+]
+build = ["build>=1.3", "hatchling>=1.27", "twine>=6"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aioplaces"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/aioplaces", "tests", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+
+[tool.uv]
+required-version = ">=0.11.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=aioplaces --cov-branch --cov-report=term-missing --cov-fail-under=80"
+filterwarnings = ["error"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+files = ["src/aioplaces"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

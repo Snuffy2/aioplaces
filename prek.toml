@@ -1,0 +1,24 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "Ruff lint"
+entry = "./.venv/bin/python -m ruff check --fix"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "Ruff format"
+entry = "./.venv/bin/python -m ruff format"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "mypy"
+name = "mypy"
+entry = "./.venv/bin/python -m mypy"
+language = "system"
+pass_filenames = false
+types = ["python"]

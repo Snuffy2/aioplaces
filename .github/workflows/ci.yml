@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked --group dev --group build
+      - run: ./.venv/bin/python -m prek run -a
+      - run: ./.venv/bin/python -m pytest
+      - run: ./.venv/bin/python -m build --no-isolation
+      - run: ./.venv/bin/python -m twine check dist/*
+      - name: Smoke test the installed wheel
+        run: |
+          uv venv /tmp/aioplaces-wheel --python 3.14
+          uv pip install --python /tmp/aioplaces-wheel/bin/python dist/*.whl
+          cd /tmp
+          /tmp/aioplaces-wheel/bin/python -c 'from aioplaces import PlacesClient, parse_place; print(parse_place({"name": "test"}))'
