@@ -26,3 +26,8 @@ Credit belongs to the Places contributors. Licensed under GPL-3.0-only; see
 
 [docs]: https://aioplaces.readthedocs.io
 [docs-shield]: https://app.readthedocs.org/projects/aioplaces/badge/?version=latest&style=for-the-badge
+
+## Endpoint diagnostics
+
+The [scripts README](scripts/README.md) documents manual tools for testing
+aioplaces client methods and inspecting raw Nominatim and Wikidata responses.
