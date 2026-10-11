@@ -139,8 +139,7 @@ Coverage must reach 80 percent.
 
 ## Releases
 
-Release automation and repository setup are described in
-[.github/RELEASING.md](.github/RELEASING.md). The publish workflow uses
+The publish workflow uses
 PyPI Trusted Publishing: stable GitHub Releases go to PyPI and prereleases go
 to TestPyPI. No package has been published yet.
 

@@ -88,7 +88,7 @@
 
 - Use GitHub Actions for CI/CD where applicable.
 - Keep versions aligned between `src/aioplaces/const.py`, release tags, and `.release-please-manifest.json`.
-- Repository automation requires GitHub secrets, publishing environments, and PyPI Trusted Publishers; see [.github/RELEASING.md](.github/RELEASING.md).
+- Repository automation requires GitHub secrets, publishing environments, and PyPI Trusted Publishers.
 
 ## Conventions for changes and documentation
 
