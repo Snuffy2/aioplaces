@@ -11,13 +11,19 @@ If the environment is not set up yet:
 uv sync --python 3.14 --locked --group dev --group build
 ```
 
-Set an identifying User-Agent with your application name and contact information:
+Use `--user-agent` to supply your own application name and contact information.
+No API keys are required.
 
-```sh
-export AIOPLACES_USER_AGENT='my-places-check/1.0 (contact: you@example.com)'
-```
+For Nominatim reverse and lookup requests, include `--email you@example.com` to
+send your contact address as the `email` query parameter. Nominatim's
+[API documentation](https://nominatim.org/release-docs/latest/api/Reverse/#other)
+asks for this when making larger numbers of requests; the parameter is optional
+for ordinary queries. An email in the User-Agent does not populate this query
+parameter. `--email` is not sent to Wikidata.
 
-You can also supply `--user-agent` on each command. No API keys are required.
+The public service's
+[usage policy](https://operations.osmfoundation.org/policies/nominatim/) requires
+an identifying User-Agent or Referer and limits traffic to one request per second.
 
 ## Library endpoints
 
@@ -29,9 +35,9 @@ and bypasses cache reads. Wikidata is requested only when explicitly selected.
 ```sh
 ./.venv/bin/python -m scripts.aioplaces_dump --list
 ./.venv/bin/python -m scripts.aioplaces_dump --endpoint reverse \
-  --latitude 48.8584 --longitude 2.2945 --language en
+  --latitude 48.8584 --longitude 2.2945 --language en --email you@example.com
 ./.venv/bin/python -m scripts.aioplaces_dump --endpoint lookup \
-  --osm-type way --osm-id 5013364
+  --osm-type way --osm-id 5013364 --email you@example.com
 ./.venv/bin/python -m scripts.aioplaces_dump --endpoint wikidata \
   --wikidata-id Q243 --output /tmp/wikidata.json
 ```
@@ -47,26 +53,55 @@ or non-JSON responses. Wikidata is a separate upstream service, not an OSM endpo
 ```sh
 ./.venv/bin/python -m scripts.osm_api_call --list
 ./.venv/bin/python -m scripts.osm_api_call --endpoint reverse \
-  --latitude 48.8584 --longitude 2.2945
+  --latitude 48.8584 --longitude 2.2945 --email you@example.com
 ./.venv/bin/python -m scripts.osm_api_call --endpoint lookup \
-  --osm-type W --osm-id 5013364 --output /tmp/osm-lookup.json
+  --osm-type W --osm-id 5013364 --email you@example.com --output /tmp/osm-lookup.json
 ./.venv/bin/python -m scripts.osm_api_call --endpoint wikidata --wikidata-id Q243
 ```
 
 ## Configuration and exit status
 
-Both tools support:
+Both tools support the following options.
 
-| Option | Purpose / default |
-| --- | --- |
-| `--base-url` | Nominatim service root; `https://nominatim.openstreetmap.org` |
-| `--wikidata-base-url` | Entity root; `https://www.wikidata.org/wiki/Special:EntityData` |
-| `--user-agent` | Overrides `AIOPLACES_USER_AGENT` |
-| `--timeout` | Positive finite request timeout in seconds; `10` |
-| `--language`, `--email` | Optional Nominatim language and contact parameters |
-| `--output` | Also write the printed JSON to a UTF-8 file; overwrites that file |
-| `--list` | List available endpoints without making a request |
-| `--help` | Show all options without making a request |
+### General options
+
+| Option | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `--endpoint` | Select `reverse`, `lookup`, or `wikidata` | — | Yes, unless using `--list` or `--help` |
+| `--user-agent` | Identifying application/contact string | `aioplaces-endpoint-scripts/1.0` | No |
+| `--timeout` | Positive finite request timeout in seconds | `10` | No |
+| `--output` | Also save JSON to a UTF-8 file; overwrites that file | — | No |
+| `--list` | List endpoints without a request; mutually exclusive with `--endpoint` | `false` | No |
+| `--help` | Show all options without making a request | — | No |
+
+### Reverse geocoding (`--endpoint reverse`)
+
+| Option | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `--latitude` | Latitude from -90 to 90 | — | Yes |
+| `--longitude` | Longitude from -180 to 180 | — | Yes |
+| `--base-url` | Nominatim service root | `https://nominatim.openstreetmap.org` | No |
+| `--language` | Nominatim language preference | — | No |
+| `--email` | Contact address sent as Nominatim’s `email` query parameter | — | No |
+
+### OSM feature lookup (`--endpoint lookup`)
+
+| Option | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `--osm-type` | Feature type: `node`, `way`, `relation`, `N`, `W`, or `R` | — | Yes |
+| `--osm-id` | Positive integer OSM feature identifier | — | Yes |
+| `--base-url` | Nominatim service root | `https://nominatim.openstreetmap.org` | No |
+| `--language` | Nominatim language preference | — | No |
+| `--email` | Contact address sent as Nominatim’s `email` query parameter | — | No |
+
+### Wikidata (`--endpoint wikidata`)
+
+| Option | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `--wikidata-id` | Entity identifier such as `Q243` | — | Yes |
+| `--wikidata-base-url` | Wikidata entity root | `https://www.wikidata.org/wiki/Special:EntityData` | No |
+
+### Exit status and request behavior
 
 Each invocation makes at most one request. Requests use TLS verification, do not
 follow redirects, and are not automatically retried. Both tools exit nonzero for
