@@ -33,7 +33,6 @@ rev = "v2.4.3"
 
 [[repos.hooks]]
 id = "codespell"
-args = ["--ignore-words-list=hass,IST"]
 exclude = "^docs/_build/"
 
 [[repos]]

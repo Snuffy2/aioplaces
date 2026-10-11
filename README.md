@@ -3,8 +3,7 @@
 
 aioplaces is a standalone asynchronous Python client for Nominatim reverse
 geocoding and OSM feature lookup, Wikidata entity retrieval, and typed parsing
-of Nominatim place responses. Python 3.14 or newer is required. It has no Home
-Assistant dependency.
+of Nominatim place responses. Python 3.14 or newer is required.
 
 ## Documentation
 

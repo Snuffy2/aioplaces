@@ -11,15 +11,13 @@ version: str = release
 
 extensions: list[str] = [
     "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.doctest",
     "sphinx.ext.viewcode",
     "myst_parser",
 ]
 
-exclude_patterns: list[str] = ["_build", "_generated"]
-autosummary_generate = True
+exclude_patterns: list[str] = ["_build"]
 autodoc_typehints = "description"
 autodoc_member_order = "bysource"
 autoclass_content = "both"
