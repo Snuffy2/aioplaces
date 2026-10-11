@@ -6,9 +6,6 @@ geocoding and OSM feature lookup, Wikidata entity retrieval, and typed parsing
 of Nominatim place responses. Python 3.14 or newer is required. It has no Home
 Assistant dependency.
 
-The library does not implement forward search, Overpass, sensor state, zones, or
-previous-place history.
-
 ## Documentation
 
 - Read the Docs: <https://aioplaces.readthedocs.io>
