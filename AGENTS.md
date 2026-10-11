@@ -24,6 +24,7 @@
 
 - `src/aioplaces`: library code.
 - `tests`: pytest test suite and fixtures.
+- `scripts`: manual endpoint diagnostics; see [scripts/README.md](scripts/README.md).
 - `README.md`: primary documentation.
 - `CHANGELOG.md`: release notes.
 - `.github/workflows`: GitHub Workflows
@@ -69,6 +70,7 @@
 - Use `importlib` only in workflow script or other script/module-loading tests; minimize `cast` and `Any` unless the test boundary requires them.
 - Parameterize tests when appropriate; avoid duplicate test functions.
 - Mock upstream HTTP requests; the test suite must not contact live services.
+- With explicit user approval, use `scripts/aioplaces_dump.py` to test library endpoints and `scripts/osm_api_call.py` to inspect raw upstream responses against live services. Read [scripts/README.md](scripts/README.md) for commands, required inputs, and usage policies. Keep public Nominatim requests at least one second apart across scripts and processes.
 - Keep coverage at or above the configured 80 percent threshold. Test observable behavior, including relevant failure and cancellation paths, rather than private call order.
 
 ## PR & branch behavior
