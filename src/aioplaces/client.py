@@ -550,6 +550,7 @@ class PlacesClient:
 
         Raises:
             HTTPError: If the response has a non-success status.
+            InvalidInputError: If request configuration is invalid.
             InvalidResponseError: If the response body is not valid JSON.
             TransportError: If the request fails at the network boundary.
         """
@@ -568,14 +569,9 @@ class PlacesClient:
                     response_text = await response.text()
                 except (UnicodeError, LookupError) as err:
                     raise InvalidResponseError("The service response is not valid text") from err
-        except (
-            aiohttp.ClientError,
-            TimeoutError,
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ) as err:
+        except (TypeError, ValueError) as err:
+            raise InvalidInputError("Request configuration is invalid") from err
+        except (aiohttp.ClientError, TimeoutError, OSError, RuntimeError) as err:
             raise TransportError("The request could not be completed") from err
 
         try:

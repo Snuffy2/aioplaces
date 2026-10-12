@@ -56,6 +56,8 @@ Failures
 * ``InvalidResponseError`` covers invalid JSON and unsupported or error response
   payloads.
 
-Invalid caller arguments, including an unsupported session type, raise
-``InvalidInputError``. Translated failures retain the original exception as their
-``__cause__``. Task cancellation continues to propagate as ``asyncio.CancelledError``.
+Invalid caller arguments and request configuration errors, including an
+unsupported session type or an invalid URL rejected by ``aiohttp``, raise
+``InvalidInputError``. Translated failures retain the original exception as
+their ``__cause__``. Task cancellation continues to propagate as
+``asyncio.CancelledError``.

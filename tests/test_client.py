@@ -797,21 +797,28 @@ def test_invalid_session_raises_places_error() -> None:
         PlacesClient(None, base_url=NOMINATIM, user_agent=USER_AGENT)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("error", [ValueError("invalid request"), TypeError("invalid header")])
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("invalid request"),
+        TypeError("invalid header"),
+        aiohttp.InvalidURL("invalid request URL"),
+    ],
+)
 async def test_request_errors_preserve_their_cause_and_allow_recovery(
-    session: aiohttp.ClientSession, error: ValueError | TypeError
+    session: aiohttp.ClientSession, error: ValueError | TypeError | aiohttp.InvalidURL
 ) -> None:
-    """Translate request setup errors and release serialization for the next call.
+    """Translate local request errors and release serialization for the next call.
 
     Args:
         session (aiohttp.ClientSession): Session borrowed by the client under test.
-        error (ValueError | TypeError): Failure raised at the HTTP boundary.
+        error (ValueError | TypeError | aiohttp.InvalidURL): Failure raised at the HTTP boundary.
     """
     client = make_client(session)
     with aioresponses() as mocked:
         mocked.get(reverse_url(), exception=error)
         mocked.get(reverse_url(), payload={"name": "ok"})
-        with pytest.raises(TransportError) as caught:
+        with pytest.raises(InvalidInputError) as caught:
             await client.reverse(40, -70)
         assert caught.value.__cause__ is error
         assert await client.reverse(40, -70) == {"name": "ok"}
