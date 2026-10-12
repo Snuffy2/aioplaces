@@ -503,24 +503,17 @@ class PlacesClient:
         Raises:
             InvalidInputError: If the identifier is not a positive integer.
         """
-        if isinstance(value, bool):
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
             raise InvalidInputError("osm_id must be a positive integer")
-        if isinstance(value, int):
-            try:
-                identifier = str(value)
-            except ValueError as err:
-                raise InvalidInputError("osm_id must be a positive integer") from err
-        elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
-            identifier = value
-        else:
+        if isinstance(value, str) and not re.fullmatch(r"[0-9]+", value):
             raise InvalidInputError("osm_id must be a positive integer")
         try:
-            numeric_id = int(identifier)
+            numeric_id = int(value) if isinstance(value, str) else value
+            if numeric_id <= 0:
+                raise InvalidInputError("osm_id must be a positive integer")
+            return str(numeric_id)
         except ValueError as err:
             raise InvalidInputError("osm_id must be a positive integer") from err
-        if numeric_id <= 0:
-            raise InvalidInputError("osm_id must be a positive integer")
-        return str(numeric_id)
 
     @staticmethod
     def _request_url(base_url: URL, path: str, query: str) -> str:
