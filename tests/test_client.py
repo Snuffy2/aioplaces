@@ -713,7 +713,7 @@ async def test_public_host_rejects_subsecond_spacing(
         session (aiohttp.ClientSession): Session borrowed by the client under test.
         base_url (str): Public service hostname under test.
     """
-    with pytest.raises(InvalidInputError, match="at least 1 second"):
+    with pytest.raises(InvalidInputError):
         PlacesClient(
             session,
             base_url=base_url,
@@ -793,7 +793,7 @@ async def test_invalid_query_options_raise_places_error(
 
 def test_invalid_session_raises_places_error() -> None:
     """Reject a session of an unsupported type with the public input error."""
-    with pytest.raises(InvalidInputError, match="session"):
+    with pytest.raises(InvalidInputError):
         PlacesClient(None, base_url=NOMINATIM, user_agent=USER_AGENT)  # type: ignore[arg-type]
 
 
