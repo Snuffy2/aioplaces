@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from asyncio import Lock, sleep
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import copy
 import json
 import logging
@@ -17,7 +17,13 @@ import aiohttp
 from cachetools import TTLCache
 from yarl import URL
 
-from .exceptions import HTTPError, InvalidResponseError, PlacesError, TransportError
+from .exceptions import (
+    HTTPError,
+    InvalidInputError,
+    InvalidResponseError,
+    PlacesError,
+    TransportError,
+)
 from .types import JSONMapping, JSONValue
 
 _LOGGER = logging.getLogger("aioplaces.client")
@@ -43,27 +49,29 @@ def _validated_base_url(value: str, setting: str) -> URL:
         URL: A normalized URL without a trailing path separator.
 
     Raises:
-        ValueError: If the URL is malformed or contains request-specific data.
+        InvalidInputError: If the URL is malformed or contains request-specific data.
     """
     if not isinstance(value, str) or not value or any(character.isspace() for character in value):
-        raise ValueError(f"{setting} must be an absolute HTTP(S) URL")
+        raise InvalidInputError(f"{setting} must be an absolute HTTP(S) URL")
     try:
         parsed = URL(value)
         port = parsed.port
+        if (
+            parsed.scheme not in {"http", "https"}
+            or parsed.host is None
+            or parsed.user is not None
+            or parsed.password is not None
+            or "?" in value
+            or "#" in value
+        ):
+            raise InvalidInputError(
+                f"{setting} must not contain credentials, a query, or a fragment"
+            )
+        if port is not None and not 1 <= port <= 65535:
+            raise InvalidInputError(f"{setting} contains an invalid port")
+        return parsed.with_path(parsed.path.rstrip("/"))
     except (TypeError, ValueError) as err:
-        raise ValueError(f"{setting} must be a valid absolute HTTP(S) URL") from err
-    if (
-        parsed.scheme not in {"http", "https"}
-        or parsed.host is None
-        or parsed.user is not None
-        or parsed.password is not None
-        or "?" in value
-        or "#" in value
-    ):
-        raise ValueError(f"{setting} must not contain credentials, a query, or a fragment")
-    if port is not None and not 1 <= port <= 65535:
-        raise ValueError(f"{setting} contains an invalid port")
-    return parsed.with_path(parsed.path.rstrip("/"))
+        raise InvalidInputError(f"{setting} must be a valid absolute HTTP(S) URL") from err
 
 
 def _finite_positive(value: float, setting: str) -> float:
@@ -77,17 +85,35 @@ def _finite_positive(value: float, setting: str) -> float:
         float: The validated value.
 
     Raises:
-        ValueError: If the value is not a positive finite number.
+        InvalidInputError: If the value is not a positive finite number.
     """
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{setting} must be a positive finite number")
+        raise InvalidInputError(f"{setting} must be a positive finite number")
     try:
         numeric_value = float(value)
     except OverflowError as err:
-        raise ValueError(f"{setting} must be a positive finite number") from err
+        raise InvalidInputError(f"{setting} must be a positive finite number") from err
     if not math.isfinite(numeric_value) or numeric_value <= 0:
-        raise ValueError(f"{setting} must be a positive finite number")
+        raise InvalidInputError(f"{setting} must be a positive finite number")
     return numeric_value
+
+
+def _encoded_query(parameters: Sequence[tuple[str, str]]) -> str:
+    """Encode validated query parameters as UTF-8 text.
+
+    Args:
+        parameters (Sequence[tuple[str, str]]): Query parameter names and values.
+
+    Returns:
+        str: URL-encoded query string.
+
+    Raises:
+        InvalidInputError: If a parameter contains invalid Unicode text.
+    """
+    try:
+        return urlencode(parameters)
+    except UnicodeError as err:
+        raise InvalidInputError("Query parameters must contain valid Unicode text") from err
 
 
 def _reject_nonstandard_constant(value: str) -> NoReturn:
@@ -97,9 +123,9 @@ def _reject_nonstandard_constant(value: str) -> NoReturn:
         value (str): Non-standard JSON constant reported by ``json.loads``.
 
     Raises:
-        ValueError: Always, because the token is not valid JSON.
+        InvalidResponseError: Always, because the token is not valid JSON.
     """
-    raise ValueError(f"Invalid JSON constant: {value}")
+    raise InvalidResponseError(f"Invalid JSON constant: {value}")
 
 
 def _as_json_value(value: object) -> JSONValue:
@@ -127,6 +153,24 @@ def _as_json_value(value: object) -> JSONValue:
             raise InvalidResponseError("The service returned a non-string JSON key")
         return {key: _as_json_value(item) for key, item in value.items()}
     raise InvalidResponseError("The service returned a value outside the JSON format")
+
+
+def _copy_response(payload: JSONMapping) -> JSONMapping:
+    """Copy a response without exposing interpreter nesting failures.
+
+    Args:
+        payload (JSONMapping): Validated response mapping.
+
+    Returns:
+        JSONMapping: An independent copy of the response.
+
+    Raises:
+        InvalidResponseError: If the response is too deeply nested to copy.
+    """
+    try:
+        return copy.deepcopy(payload)
+    except RecursionError as err:
+        raise InvalidResponseError("The service response is too deeply nested") from err
 
 
 def _service_error(payload: JSONMapping) -> None:
@@ -218,7 +262,7 @@ class PlacesClient:
     """Async client for Nominatim and Wikidata lookup APIs.
 
     The caller owns the supplied aiohttp session. Public methods raise
-    ``ValueError`` for invalid input and propagate ``PlacesError`` subclasses for
+    ``InvalidInputError`` for invalid input and propagate ``PlacesError`` subclasses for
     transport, HTTP, and response failures. The client keeps only per-instance cache
     and request-spacing state and never closes the session.
     """
@@ -248,41 +292,42 @@ class PlacesClient:
             wikidata_base_url (str): Wikidata entity data endpoint root.
 
         Raises:
-            TypeError: If session is not an aiohttp client session.
-            ValueError: If a URL or client setting is invalid.
+            InvalidInputError: If the session, a URL, or a client setting is invalid.
         """
         if not isinstance(session, aiohttp.ClientSession):
-            raise TypeError("session must be an aiohttp.ClientSession")
+            raise InvalidInputError("session must be an aiohttp.ClientSession")
         if (
             not isinstance(user_agent, str)
             or not user_agent.strip()
             or "\r" in user_agent
             or "\n" in user_agent
         ):
-            raise ValueError("user_agent must be non-empty and must not contain CR or LF")
+            raise InvalidInputError("user_agent must be non-empty and must not contain CR or LF")
         self._base_url: URL = _validated_base_url(base_url, "base_url")
         self._wikidata_base_url: URL = _validated_base_url(wikidata_base_url, "wikidata_base_url")
         self._timeout: float = _finite_positive(timeout, "timeout")
         cache_lifetime = _finite_positive(cache_ttl, "cache_ttl")
         if isinstance(cache_maxsize, bool) or not isinstance(cache_maxsize, int):
-            raise ValueError("cache_maxsize must be a positive integer")
+            raise InvalidInputError("cache_maxsize must be a positive integer")
         if cache_maxsize <= 0:
-            raise ValueError("cache_maxsize must be a positive integer")
+            raise InvalidInputError("cache_maxsize must be a positive integer")
         if isinstance(min_request_interval, bool) or not isinstance(
             min_request_interval, (int, float)
         ):
-            raise ValueError("min_request_interval must be a finite non-negative number")
+            raise InvalidInputError("min_request_interval must be a finite non-negative number")
         try:
             request_interval = float(min_request_interval)
         except OverflowError as err:
-            raise ValueError("min_request_interval must be a finite non-negative number") from err
+            raise InvalidInputError(
+                "min_request_interval must be a finite non-negative number"
+            ) from err
         if not math.isfinite(request_interval) or request_interval < 0:
-            raise ValueError("min_request_interval must be a finite non-negative number")
+            raise InvalidInputError("min_request_interval must be a finite non-negative number")
         if (
             request_interval < 1
             and (self._base_url.host or "").rstrip(".").lower() == "nominatim.openstreetmap.org"
         ):
-            raise ValueError("Public service hosts require an interval of at least 1 second")
+            raise InvalidInputError("Public service hosts require an interval of at least 1 second")
 
         self._session: aiohttp.ClientSession = session
         self._user_agent: str = user_agent
@@ -315,12 +360,13 @@ class PlacesClient:
             JSONMapping | None: The Nominatim result mapping, or ``None`` when there is no result.
 
         Raises:
-            ValueError: If either coordinate is invalid.
+            InvalidInputError: If coordinates or optional query parameters are invalid.
             PlacesError: If the request or response fails.
         """  # noqa: DOC502  # Errors propagate from _coordinate and _request_json.
+        self._validate_query_options(language, email)
         lat = self._coordinate(latitude, "latitude", -90, 90)
         lon = self._coordinate(longitude, "longitude", -180, 180)
-        query = urlencode(
+        query = _encoded_query(
             (
                 ("format", "json"),
                 ("lat", str(lat)),
@@ -360,14 +406,15 @@ class PlacesClient:
             JSONMapping | None: The single result mapping, or ``None`` if no result exists.
 
         Raises:
-            ValueError: If the type or identifier is invalid.
+            InvalidInputError: If the type, identifier, or optional query parameters are invalid.
             PlacesError: If the request or response fails.
         """  # noqa: DOC503  # PlacesError propagates from _request_json.
+        self._validate_query_options(language, email)
         if not isinstance(osm_type, str) or osm_type.lower() not in _OSM_TYPES:
-            raise ValueError("osm_type must be node, way, relation, N, W, or R")
+            raise InvalidInputError("osm_type must be node, way, relation, N, W, or R")
         type_prefix = _OSM_TYPES[osm_type.lower()]
         id_text = self._osm_id(osm_id)
-        query = urlencode(
+        query = _encoded_query(
             (
                 ("osm_ids", f"{type_prefix}{id_text}"),
                 ("format", "json"),
@@ -394,13 +441,28 @@ class PlacesClient:
             JSONMapping | None: The Wikidata response mapping, or ``None`` if it is empty.
 
         Raises:
-            ValueError: If the entity identifier is invalid.
+            InvalidInputError: If the entity identifier is invalid.
             PlacesError: If the request or response fails.
         """  # noqa: DOC503  # PlacesError propagates from _request_json.
         if not isinstance(wikidata_id, str) or _WIKIDATA_ID.fullmatch(wikidata_id) is None:
-            raise ValueError("wikidata_id must be a Q identifier followed by digits")
+            raise InvalidInputError("wikidata_id must be a Q identifier followed by digits")
         url = str(URL(f"{self._wikidata_base_url}/{wikidata_id}.json"))
         return await self._request_json(url, "wikidata", _normalize_wikidata, use_cache=use_cache)
+
+    @staticmethod
+    def _validate_query_options(language: str | None, email: str | None) -> None:
+        """Validate optional text query parameters before URL encoding.
+
+        Args:
+            language (str | None): Optional preferred language codes.
+            email (str | None): Optional contact email.
+
+        Raises:
+            InvalidInputError: If either parameter is not text or None.
+        """
+        for name, value in (("language", language), ("email", email)):
+            if value is not None and not isinstance(value, str):
+                raise InvalidInputError(f"{name} must be a string or None")
 
     @staticmethod
     def _coordinate(value: float, name: str, minimum: float, maximum: float) -> float:
@@ -416,16 +478,16 @@ class PlacesClient:
             float: The validated coordinate.
 
         Raises:
-            ValueError: If the coordinate is not a finite number in range.
+            InvalidInputError: If the coordinate is not a finite number in range.
         """
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"{name} must be a finite number in range")
+            raise InvalidInputError(f"{name} must be a finite number in range")
         try:
             coordinate = float(value)
         except OverflowError as err:
-            raise ValueError(f"{name} must be a finite number in range") from err
+            raise InvalidInputError(f"{name} must be a finite number in range") from err
         if not math.isfinite(coordinate) or not minimum <= coordinate <= maximum:
-            raise ValueError(f"{name} must be a finite number in range")
+            raise InvalidInputError(f"{name} must be a finite number in range")
         return coordinate
 
     @staticmethod
@@ -439,19 +501,26 @@ class PlacesClient:
             str: The identifier in canonical decimal form.
 
         Raises:
-            ValueError: If the identifier is not a positive integer.
+            InvalidInputError: If the identifier is not a positive integer.
         """
         if isinstance(value, bool):
-            raise ValueError("osm_id must be a positive integer")
+            raise InvalidInputError("osm_id must be a positive integer")
         if isinstance(value, int):
-            identifier = str(value)
+            try:
+                identifier = str(value)
+            except ValueError as err:
+                raise InvalidInputError("osm_id must be a positive integer") from err
         elif isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
             identifier = value
         else:
-            raise ValueError("osm_id must be a positive integer")
-        if int(identifier) <= 0:
-            raise ValueError("osm_id must be a positive integer")
-        return str(int(identifier))
+            raise InvalidInputError("osm_id must be a positive integer")
+        try:
+            numeric_id = int(identifier)
+        except ValueError as err:
+            raise InvalidInputError("osm_id must be a positive integer") from err
+        if numeric_id <= 0:
+            raise InvalidInputError("osm_id must be a positive integer")
+        return str(numeric_id)
 
     @staticmethod
     def _request_url(base_url: URL, path: str, query: str) -> str:
@@ -504,16 +573,23 @@ class PlacesClient:
                     raise HTTPError(response.status, response.headers.get("Retry-After"))
                 try:
                     response_text = await response.text()
-                except UnicodeDecodeError as err:
+                except (UnicodeError, LookupError) as err:
                     raise InvalidResponseError("The service response is not valid text") from err
-        except (aiohttp.ClientError, TimeoutError, OSError, RuntimeError) as err:
+        except (
+            aiohttp.ClientError,
+            TimeoutError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as err:
             raise TransportError("The request could not be completed") from err
 
         try:
             decoded: object = json.loads(response_text, parse_constant=_reject_nonstandard_constant)
-        except (ValueError, UnicodeDecodeError) as err:
+            return _as_json_value(decoded)
+        except (ValueError, RecursionError) as err:
             raise InvalidResponseError("The service response is not valid JSON") from err
-        return _as_json_value(decoded)
 
     async def _request_json(
         self,
@@ -540,12 +616,12 @@ class PlacesClient:
         """
         if use_cache and url in self._cache:
             _LOGGER.debug("Returning cached %s data", operation)
-            return copy.deepcopy(self._cache[url])
+            return _copy_response(self._cache[url])
 
         async with self._lock:
             if use_cache and url in self._cache:
                 _LOGGER.debug("Returning cached %s data", operation)
-                return copy.deepcopy(self._cache[url])
+                return _copy_response(self._cache[url])
             await self._respect_request_interval()
             try:
                 payload = await self._fetch_json(url, operation)
@@ -557,5 +633,5 @@ class PlacesClient:
             if result is None:
                 self._cache.pop(url, None)
                 return None
-            self._cache[url] = copy.deepcopy(result)
-            return copy.deepcopy(result)
+            self._cache[url] = _copy_response(result)
+            return _copy_response(result)
