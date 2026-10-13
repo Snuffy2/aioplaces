@@ -868,27 +868,30 @@ def test_invalid_session_raises_places_error() -> None:
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "expected_error"),
     [
-        ValueError("invalid request"),
-        TypeError("invalid header"),
-        aiohttp.InvalidURL("invalid request URL"),
+        (ValueError("response processing failed"), TransportError),
+        (TypeError("invalid header"), InvalidInputError),
+        (aiohttp.InvalidURL("invalid request URL"), InvalidInputError),
     ],
 )
 async def test_request_errors_preserve_their_cause_and_allow_recovery(
-    session: aiohttp.ClientSession, error: ValueError | TypeError | aiohttp.InvalidURL
+    session: aiohttp.ClientSession,
+    error: ValueError | TypeError | aiohttp.InvalidURL,
+    expected_error: type[InvalidInputError] | type[TransportError],
 ) -> None:
-    """Translate local request errors and release serialization for the next call.
+    """Distinguish request validation from processing failures and allow recovery.
 
     Args:
         session (aiohttp.ClientSession): Session borrowed by the client under test.
         error (ValueError | TypeError | aiohttp.InvalidURL): Failure raised at the HTTP boundary.
+        expected_error (type[InvalidInputError] | type[TransportError]): Expected failure category.
     """
     client = make_client(session)
     with aioresponses() as mocked:
         mocked.get(reverse_url(), exception=error)
         mocked.get(reverse_url(), payload={"name": "ok"})
-        with pytest.raises(InvalidInputError) as caught:
+        with pytest.raises(expected_error) as caught:
             await client.reverse(40, -70)
         assert caught.value.__cause__ is error
         assert await client.reverse(40, -70) == {"name": "ok"}
@@ -916,18 +919,28 @@ async def test_unprocessable_json_raises_places_error(
     assert isinstance(caught.value.__cause__, (ValueError, RecursionError))
 
 
-@pytest.mark.parametrize("error", [LookupError("unknown codec"), UnicodeError("invalid text")])
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (LookupError("unknown codec"), InvalidResponseError),
+        (UnicodeError("invalid text"), InvalidResponseError),
+        (ValueError("response processing failed"), TransportError),
+    ],
+)
 async def test_response_text_errors_raise_places_error(
     session: aiohttp.ClientSession,
     monkeypatch: pytest.MonkeyPatch,
-    error: LookupError | UnicodeError,
+    error: LookupError | UnicodeError | ValueError,
+    expected_error: type[InvalidResponseError] | type[TransportError],
 ) -> None:
-    """Translate response text decoding failures and retain their original cause.
+    """Translate response text decoding and processing failures and retain their original cause.
 
     Args:
         session (aiohttp.ClientSession): Session borrowed by the client under test.
         monkeypatch (pytest.MonkeyPatch): Scoped response decoding override.
-        error (LookupError | UnicodeError): Failure raised when reading response text.
+        error (LookupError | UnicodeError | ValueError): Failure raised when reading response text.
+        expected_error (type[InvalidResponseError] | type[TransportError]):
+            Expected failure category.
     """
 
     async def failing_text(self: aiohttp.ClientResponse) -> NoReturn:
@@ -939,12 +952,13 @@ async def test_response_text_errors_raise_places_error(
         Raises:
             LookupError: If the configured failure concerns a codec lookup.
             UnicodeError: If the configured failure concerns text decoding.
+            ValueError: If the configured failure concerns response processing.
         """  # noqa: DOC503  # The exception is supplied by the parameterized test.
         raise error
 
     monkeypatch.setattr(aiohttp.ClientResponse, "text", failing_text)
     with aioresponses() as mocked:
         mocked.get(reverse_url(), body="{}")
-        with pytest.raises(InvalidResponseError) as caught:
+        with pytest.raises(expected_error) as caught:
             await make_client(session).reverse(40, -70)
     assert caught.value.__cause__ is error

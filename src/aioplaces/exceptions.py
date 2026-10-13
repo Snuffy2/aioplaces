@@ -12,7 +12,7 @@ class InvalidInputError(PlacesError):
 
 
 class TransportError(PlacesError):
-    """A request could not be completed because of a transport failure."""
+    """A request failed during transport or response processing."""
 
 
 class HTTPError(PlacesError):
