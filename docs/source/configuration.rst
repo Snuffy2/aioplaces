@@ -49,11 +49,17 @@ Failures
 
 ``PlacesError`` is the common exception base:
 
-* ``TransportError`` covers network and timeout failures.
+* ``InvalidInputError`` covers invalid configuration and caller arguments.
+* ``TransportError`` covers network, timeout, and response-processing failures.
 * ``HTTPError`` exposes the response ``status`` and optional, unmodified
   ``retry_after`` header.
 * ``InvalidResponseError`` covers invalid JSON and unsupported or error response
   payloads.
 
-Invalid caller arguments raise ``ValueError``; passing anything other than an
-``aiohttp.ClientSession`` as the session raises ``TypeError``.
+Invalid caller arguments, unsupported session types, and request URL or
+argument-type errors rejected by ``aiohttp`` raise ``InvalidInputError``.
+Other ``ValueError`` failures while obtaining or reading a response raise
+``TransportError``; JSON decoding failures raise ``InvalidResponseError``.
+Translated failures retain the original exception as
+their ``__cause__``. Task cancellation continues to propagate as
+``asyncio.CancelledError``.
