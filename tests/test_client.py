@@ -8,7 +8,7 @@ from typing import NoReturn
 from urllib.parse import urlencode
 
 import aiohttp
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 import pytest
 
 import aioplaces.client as client_module
@@ -433,6 +433,27 @@ async def test_invalid_json_and_transport_failure_use_typed_errors(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+async def test_nonstandard_json_constants_are_rejected_at_http_boundary(
+    session: aiohttp.ClientSession, constant: str
+) -> None:
+    """Reject JavaScript numeric constants in an upstream JSON response.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        constant (str): Non-standard JSON token returned by the mocked service.
+    """
+    with aioresponses() as mocked:
+        mocked.get(reverse_url(), body=f'{{"value": {constant}}}')
+        client = make_client(session)
+
+        with pytest.raises(InvalidResponseError):
+            await client.reverse(40, -70)
+
+    assert request_count(mocked) == 1
+
+
+@pytest.mark.asyncio
 async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
     session: aiohttp.ClientSession,
 ) -> None:
@@ -442,10 +463,45 @@ async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
         session (aiohttp.ClientSession): Session borrowed by the client under test.
     """
     url = reverse_url()
+    response_started = asyncio.Event()
+    release_response = asyncio.Event()
+
+    async def delayed_response(_url: object, **_kwargs: object) -> CallbackResult:
+        """Hold the mocked response open until both callers overlap.
+
+        Args:
+            _url (object): Request URL supplied by ``aioresponses``.
+            **_kwargs (object): Request details supplied by ``aioresponses``.
+
+        Returns:
+            CallbackResult: The deterministic JSON response for the request.
+        """
+        response_started.set()
+        await release_response.wait()
+        return CallbackResult(payload={"nested": {"values": [1]}})
+
     with aioresponses() as mocked:
-        mocked.get(url, payload={"nested": {"values": [1]}})
+        mocked.get(url, callback=delayed_response)
         client = make_client(session)
-        first, second = await asyncio.gather(client.reverse(40, -70), client.reverse(40, -70))
+        first_task = asyncio.create_task(client.reverse(40, -70))
+        await response_started.wait()
+
+        second_call_started = asyncio.Event()
+
+        async def second_call() -> JSONMapping | None:
+            """Start a second public call while the first response is pending.
+
+            Returns:
+                JSONMapping | None: The result returned by the client.
+            """
+            second_call_started.set()
+            return await client.reverse(40, -70)
+
+        second_task = asyncio.create_task(second_call())
+        await second_call_started.wait()
+        requests_while_first_response_pending = request_count(mocked)
+        release_response.set()
+        first, second = await asyncio.gather(first_task, second_task)
         assert first is not None
         nested = first["nested"]
         assert isinstance(nested, dict)
@@ -456,6 +512,7 @@ async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
 
     assert second == {"nested": {"values": [1]}}
     assert third == {"nested": {"values": [1]}}
+    assert requests_while_first_response_pending == 1
     assert request_count(mocked) == 1
 
 
@@ -668,14 +725,27 @@ async def test_inflight_cancellation_propagates_and_releases_the_lock(
     [
         ("timeout", 0),
         ("timeout", float("inf")),
+        ("timeout", True),
+        ("timeout", "1"),
+        pytest.param("timeout", 10**5000, id="timeout-huge-integer"),
         ("cache_ttl", -1),
+        ("cache_ttl", True),
+        ("cache_ttl", "1"),
+        pytest.param("cache_ttl", 10**5000, id="cache-ttl-huge-integer"),
         ("cache_maxsize", 0),
+        ("cache_maxsize", True),
+        ("cache_maxsize", 1.5),
         ("min_request_interval", -0.1),
+        ("min_request_interval", True),
+        ("min_request_interval", "1"),
         ("min_request_interval", 10**400),
         ("base_url", "https://user:pass@example.org"),
         ("base_url", "https://example.org/?token=x"),
         ("base_url", "https://example.org/#fragment"),
         ("base_url", "bad url"),
+        ("base_url", "http://example.org:0"),
+        ("base_url", "http://example.org:not-a-port"),
+        ("base_url", "http://example.org:65536"),
     ],
 )
 async def test_invalid_client_settings_raise_invalid_input_error(
