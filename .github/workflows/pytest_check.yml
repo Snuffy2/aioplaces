@@ -34,7 +34,7 @@ jobs:
         if: >-
           github.event_name == 'pull_request' &&
           github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
@@ -78,7 +78,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup uv (with caching)
-        uses: astral-sh/setup-uv@v10.2.0
+        uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.14"
           enable-cache: true
