@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import re
 
 from .const import CITY_LIST, NEIGHBOURHOOD_LIST, POSTAL_TOWN_LIST
+from .exceptions import InvalidInputError
 from .models import ParsedPlace
 
 __all__ = ["parse_place"]
@@ -27,7 +28,14 @@ def parse_place(payload: Mapping[str, object], language: str | None = None) -> P
     Returns:
         ParsedPlace: An immutable record containing normalized string fields. Malformed
         nested structures and unsupported scalar values produce ``None``.
+
+    Raises:
+        InvalidInputError: If payload is not a mapping or language is not text or None.
     """
+    if not isinstance(payload, Mapping):
+        raise InvalidInputError("payload must be a mapping")
+    if language is not None and not isinstance(language, str):
+        raise InvalidInputError("language must be a string or None")
     address = _mapping(payload.get("address"))
     namedetails = _mapping(payload.get("namedetails"))
 
@@ -195,7 +203,10 @@ def _normalized_osm_id(value: object) -> str | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return str(value) if value > 0 else None
+        try:
+            return str(value) if value > 0 else None
+        except ValueError:
+            return None
     if not isinstance(value, str):
         return None
 
