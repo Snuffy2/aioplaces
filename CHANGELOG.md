@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.2](https://github.com/Snuffy2/aioplaces/compare/v0.1.1...v0.1.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** update certifi to address compromised CA alert ([#16](https://github.com/Snuffy2/aioplaces/issues/16)) ([5ea39d9](https://github.com/Snuffy2/aioplaces/commit/5ea39d99a9da85f2f0c6811cd4a467da0cb6a2f5))
+* update pydoclint settings and deduplicate CI checks ([#18](https://github.com/Snuffy2/aioplaces/issues/18)) ([b4f2ba8](https://github.com/Snuffy2/aioplaces/commit/b4f2ba8fdbe595c2c8999324eac7198a2840b631))
+
+
+### Dependencies
+
+* bump setuptools from 84.0.0 to 84.2.1 ([#19](https://github.com/Snuffy2/aioplaces/issues/19)) ([dd01fdf](https://github.com/Snuffy2/aioplaces/commit/dd01fdf5ca1bbcb2c6cf3d0bce0228351dea5650))
+* bump the github-actions group with 2 updates ([#13](https://github.com/Snuffy2/aioplaces/issues/13)) ([a225b37](https://github.com/Snuffy2/aioplaces/commit/a225b37b74f36cdbe09d305504179c6fec46302b))
+* bump the python-dependencies group with 2 updates ([#20](https://github.com/Snuffy2/aioplaces/issues/20)) ([e8855cd](https://github.com/Snuffy2/aioplaces/commit/e8855cdd28f509c57379261372bba86db1d9fcc5))
+* bump uv from 0.13.0 to 0.13.4 ([#15](https://github.com/Snuffy2/aioplaces/issues/15)) ([1ec89f5](https://github.com/Snuffy2/aioplaces/commit/1ec89f5662adf30cbd6675bd00d0bfc68f67094d))
+* update prek hooks ([#14](https://github.com/Snuffy2/aioplaces/issues/14)) ([554286f](https://github.com/Snuffy2/aioplaces/commit/554286fc422128ff85490682be622379fe391239))
+* update prek hooks ([#21](https://github.com/Snuffy2/aioplaces/issues/21)) ([21be107](https://github.com/Snuffy2/aioplaces/commit/21be107a63dd514c6e9d91e979a75ad0b3b086bd))
+
 ## [0.1.1](https://github.com/Snuffy2/aioplaces/compare/v0.1.0...v0.1.1) (2026-10-11)
 
 
