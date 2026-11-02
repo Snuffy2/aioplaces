@@ -1,14 +1,18 @@
-"""Exceptions raised by the aioplaces client."""
+"""Exceptions raised by aioplaces."""
 
 from __future__ import annotations
 
 
 class PlacesError(Exception):
-    """Base class for client errors."""
+    """Base class for aioplaces errors."""
+
+
+class InvalidInputError(PlacesError):
+    """A caller supplied invalid client configuration or operation arguments."""
 
 
 class TransportError(PlacesError):
-    """A request could not be completed because of a transport failure."""
+    """A request failed during transport or response processing."""
 
 
 class HTTPError(PlacesError):

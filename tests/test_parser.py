@@ -8,6 +8,7 @@ from dataclasses import FrozenInstanceError, fields
 
 import pytest
 
+from aioplaces.exceptions import InvalidInputError
 from aioplaces.models import ParsedPlace
 from aioplaces.parser import parse_place
 
@@ -231,3 +232,20 @@ def test_retail_fallback_preserves_category_case(category: str, expected: str) -
         "address": {"road": "Main Road", "retail": "Shop"},
     }
     assert parse_place(payload).place_name == expected
+
+
+@pytest.mark.parametrize(("payload", "language"), [(None, None), ([], None), ({}, 1)])
+def test_parse_place_rejects_invalid_arguments(payload: object, language: object) -> None:
+    """Raise a Places exception for invalid top-level parser arguments.
+
+    Args:
+        payload (object): Candidate response input.
+        language (object): Candidate language preference.
+    """
+    with pytest.raises(InvalidInputError):
+        parse_place(payload, language)  # type: ignore[arg-type]
+
+
+def test_parse_place_ignores_unrepresentable_integer_id() -> None:
+    """Keep malformed fields tolerant when an integer exceeds Python text limits."""
+    assert parse_place({"osm_id": 10**5000}).osm_id is None
