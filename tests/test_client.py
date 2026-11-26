@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import NoReturn
 from urllib.parse import urlencode
 
 import aiohttp
-from aioresponses import aioresponses
+from aioresponses import CallbackResult, aioresponses
 import pytest
 
 import aioplaces.client as client_module
 from aioplaces.client import PlacesClient
-from aioplaces.exceptions import HTTPError, InvalidResponseError, TransportError
+from aioplaces.exceptions import HTTPError, InvalidInputError, InvalidResponseError, TransportError
 from aioplaces.types import JSONMapping
 
 NOMINATIM = "http://127.0.0.1:8080"
@@ -246,14 +247,23 @@ async def test_reverse_rejects_invalid_coordinates(
         longitude (float): Invalid longitude supplied to the request.
     """
     client = make_client(session)
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidInputError):
         await client.reverse(latitude, longitude)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("osm_type", "osm_id"),
-    [("area", 1), ("node", 0), ("node", -1), ("node", True), ("node", 1.5), ("node", "1.2")],
+    [
+        ("area", 1),
+        ("node", 0),
+        ("node", -1),
+        ("node", True),
+        ("node", 1.5),
+        ("node", "1.2"),
+        ("node", "9" * 5000),
+        pytest.param("node", 10**5000, id="oversized-integer"),
+    ],
 )
 async def test_lookup_rejects_invalid_type_or_identifier(
     session: aiohttp.ClientSession, osm_type: str, osm_id: int | str
@@ -266,7 +276,7 @@ async def test_lookup_rejects_invalid_type_or_identifier(
         osm_id (int | str): Invalid identifier supplied to the request.
     """
     client = make_client(session)
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidInputError):
         await client.lookup(osm_type, osm_id)
 
 
@@ -282,7 +292,7 @@ async def test_wikidata_rejects_invalid_identifier(
         wikidata_id (str): Invalid identifier supplied to the request.
     """
     client = make_client(session)
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidInputError):
         await client.wikidata(wikidata_id)
 
 
@@ -423,6 +433,27 @@ async def test_invalid_json_and_transport_failure_use_typed_errors(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+async def test_nonstandard_json_constants_are_rejected_at_http_boundary(
+    session: aiohttp.ClientSession, constant: str
+) -> None:
+    """Reject JavaScript numeric constants in an upstream JSON response.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        constant (str): Non-standard JSON token returned by the mocked service.
+    """
+    with aioresponses() as mocked:
+        mocked.get(reverse_url(), body=f'{{"value": {constant}}}')
+        client = make_client(session)
+
+        with pytest.raises(InvalidResponseError):
+            await client.reverse(40, -70)
+
+    assert request_count(mocked) == 1
+
+
+@pytest.mark.asyncio
 async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
     session: aiohttp.ClientSession,
 ) -> None:
@@ -432,10 +463,45 @@ async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
         session (aiohttp.ClientSession): Session borrowed by the client under test.
     """
     url = reverse_url()
+    response_started = asyncio.Event()
+    release_response = asyncio.Event()
+
+    async def delayed_response(_url: object, **_kwargs: object) -> CallbackResult:
+        """Hold the mocked response open until both callers overlap.
+
+        Args:
+            _url (object): Request URL supplied by ``aioresponses``.
+            **_kwargs (object): Request details supplied by ``aioresponses``.
+
+        Returns:
+            CallbackResult: The deterministic JSON response for the request.
+        """
+        response_started.set()
+        await release_response.wait()
+        return CallbackResult(payload={"nested": {"values": [1]}})
+
     with aioresponses() as mocked:
-        mocked.get(url, payload={"nested": {"values": [1]}})
+        mocked.get(url, callback=delayed_response)
         client = make_client(session)
-        first, second = await asyncio.gather(client.reverse(40, -70), client.reverse(40, -70))
+        first_task = asyncio.create_task(client.reverse(40, -70))
+        await response_started.wait()
+
+        second_call_started = asyncio.Event()
+
+        async def second_call() -> JSONMapping | None:
+            """Start a second public call while the first response is pending.
+
+            Returns:
+                JSONMapping | None: The result returned by the client.
+            """
+            second_call_started.set()
+            return await client.reverse(40, -70)
+
+        second_task = asyncio.create_task(second_call())
+        await second_call_started.wait()
+        requests_while_first_response_pending = request_count(mocked)
+        release_response.set()
+        first, second = await asyncio.gather(first_task, second_task)
         assert first is not None
         nested = first["nested"]
         assert isinstance(nested, dict)
@@ -446,6 +512,7 @@ async def test_cache_returns_deep_copies_and_coalesces_concurrent_calls(
 
     assert second == {"nested": {"values": [1]}}
     assert third == {"nested": {"values": [1]}}
+    assert requests_while_first_response_pending == 1
     assert request_count(mocked) == 1
 
 
@@ -658,17 +725,30 @@ async def test_inflight_cancellation_propagates_and_releases_the_lock(
     [
         ("timeout", 0),
         ("timeout", float("inf")),
+        ("timeout", True),
+        ("timeout", "1"),
+        pytest.param("timeout", 10**5000, id="timeout-huge-integer"),
         ("cache_ttl", -1),
+        ("cache_ttl", True),
+        ("cache_ttl", "1"),
+        pytest.param("cache_ttl", 10**5000, id="cache-ttl-huge-integer"),
         ("cache_maxsize", 0),
+        ("cache_maxsize", True),
+        ("cache_maxsize", 1.5),
         ("min_request_interval", -0.1),
+        ("min_request_interval", True),
+        ("min_request_interval", "1"),
         ("min_request_interval", 10**400),
         ("base_url", "https://user:pass@example.org"),
         ("base_url", "https://example.org/?token=x"),
         ("base_url", "https://example.org/#fragment"),
         ("base_url", "bad url"),
+        ("base_url", "http://example.org:0"),
+        ("base_url", "http://example.org:not-a-port"),
+        ("base_url", "http://example.org:65536"),
     ],
 )
-async def test_invalid_client_settings_raise_value_error(
+async def test_invalid_client_settings_raise_invalid_input_error(
     session: aiohttp.ClientSession, setting: str, value: object
 ) -> None:
     """Reject invalid numeric settings and unsafe service base URLs.
@@ -685,7 +765,7 @@ async def test_invalid_client_settings_raise_value_error(
         "min_request_interval": 0,
     }
     kwargs[setting] = value
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidInputError):
         PlacesClient(session, **kwargs)  # type: ignore[arg-type]
 
 
@@ -703,7 +783,7 @@ async def test_public_host_rejects_subsecond_spacing(
         session (aiohttp.ClientSession): Session borrowed by the client under test.
         base_url (str): Public service hostname under test.
     """
-    with pytest.raises(ValueError, match="at least 1 second"):
+    with pytest.raises(InvalidInputError):
         PlacesClient(
             session,
             base_url=base_url,
@@ -746,7 +826,7 @@ async def test_user_agent_rejects_header_line_breaks(
     Args:
         session (aiohttp.ClientSession): Session borrowed by the client under test.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidInputError):
         PlacesClient(
             session,
             base_url=NOMINATIM,
@@ -754,3 +834,131 @@ async def test_user_agent_rejects_header_line_breaks(
             wikidata_base_url=WIKIDATA,
             min_request_interval=0,
         )
+
+
+@pytest.mark.parametrize("operation", ["reverse", "lookup"])
+@pytest.mark.parametrize("option", ["language", "email"])
+@pytest.mark.parametrize("value", [0, [], "\ud800"])
+async def test_invalid_query_options_raise_places_error(
+    session: aiohttp.ClientSession, operation: str, option: str, value: object
+) -> None:
+    """Reject unsupported types and invalid Unicode before making a request.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        operation (str): Public method to exercise.
+        option (str): Optional query argument to override.
+        value (object): Invalid query value.
+    """
+    client = make_client(session)
+    kwargs = {option: value}
+    with aioresponses() as mocked:
+        with pytest.raises(InvalidInputError):
+            if operation == "reverse":
+                await client.reverse(40, -70, **kwargs)  # type: ignore[arg-type]
+            else:
+                await client.lookup("node", 1, **kwargs)  # type: ignore[arg-type]
+    assert request_count(mocked) == 0
+
+
+def test_invalid_session_raises_places_error() -> None:
+    """Reject a session of an unsupported type with the public input error."""
+    with pytest.raises(InvalidInputError):
+        PlacesClient(None, base_url=NOMINATIM, user_agent=USER_AGENT)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (ValueError("response processing failed"), TransportError),
+        (TypeError("invalid header"), InvalidInputError),
+        (aiohttp.InvalidURL("invalid request URL"), InvalidInputError),
+    ],
+)
+async def test_request_errors_preserve_their_cause_and_allow_recovery(
+    session: aiohttp.ClientSession,
+    error: ValueError | TypeError | aiohttp.InvalidURL,
+    expected_error: type[InvalidInputError] | type[TransportError],
+) -> None:
+    """Distinguish request validation from processing failures and allow recovery.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        error (ValueError | TypeError | aiohttp.InvalidURL): Failure raised at the HTTP boundary.
+        expected_error (type[InvalidInputError] | type[TransportError]): Expected failure category.
+    """
+    client = make_client(session)
+    with aioresponses() as mocked:
+        mocked.get(reverse_url(), exception=error)
+        mocked.get(reverse_url(), payload={"name": "ok"})
+        with pytest.raises(expected_error) as caught:
+            await client.reverse(40, -70)
+        assert caught.value.__cause__ is error
+        assert await client.reverse(40, -70) == {"name": "ok"}
+
+
+@pytest.mark.parametrize(
+    "body", ["[" * 2000 + "]" * 2000, "9" * 5000, '{"x":' * 600 + "0" + "}" * 600]
+)
+async def test_unprocessable_json_raises_places_error(
+    session: aiohttp.ClientSession, body: str
+) -> None:
+    """Translate JSON nesting and integer conversion limits at the response boundary.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        body (str): JSON response that exceeds Python decoder limits.
+    """
+    with aioresponses() as mocked:
+        mocked.get(reverse_url(), body=body)
+        mocked.get(reverse_url(), payload={"name": "ok"})
+        client = make_client(session)
+        with pytest.raises(InvalidResponseError) as caught:
+            await client.reverse(40, -70)
+        assert await client.reverse(40, -70) == {"name": "ok"}
+    assert isinstance(caught.value.__cause__, (ValueError, RecursionError))
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_error"),
+    [
+        (LookupError("unknown codec"), InvalidResponseError),
+        (UnicodeError("invalid text"), InvalidResponseError),
+        (ValueError("response processing failed"), TransportError),
+    ],
+)
+async def test_response_text_errors_raise_places_error(
+    session: aiohttp.ClientSession,
+    monkeypatch: pytest.MonkeyPatch,
+    error: LookupError | UnicodeError | ValueError,
+    expected_error: type[InvalidResponseError] | type[TransportError],
+) -> None:
+    """Translate response text decoding and processing failures and retain their original cause.
+
+    Args:
+        session (aiohttp.ClientSession): Session borrowed by the client under test.
+        monkeypatch (pytest.MonkeyPatch): Scoped response decoding override.
+        error (LookupError | UnicodeError | ValueError): Failure raised when reading response text.
+        expected_error (type[InvalidResponseError] | type[TransportError]):
+            Expected failure category.
+    """
+
+    async def failing_text(self: aiohttp.ClientResponse) -> NoReturn:
+        """Simulate a response that cannot be decoded as text.
+
+        Args:
+            self (aiohttp.ClientResponse): Response whose text is requested.
+
+        Raises:
+            LookupError: If the configured failure concerns a codec lookup.
+            UnicodeError: If the configured failure concerns text decoding.
+            ValueError: If the configured failure concerns response processing.
+        """  # noqa: DOC503  # The exception is supplied by the parameterized test.
+        raise error
+
+    monkeypatch.setattr(aiohttp.ClientResponse, "text", failing_text)
+    with aioresponses() as mocked:
+        mocked.get(reverse_url(), body="{}")
+        with pytest.raises(expected_error) as caught:
+            await make_client(session).reverse(40, -70)
+    assert caught.value.__cause__ is error

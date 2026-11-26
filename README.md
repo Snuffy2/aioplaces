@@ -12,6 +12,9 @@ of Nominatim place responses. Python 3.14 or newer is required.
 The documentation covers installation, quick start examples, client configuration,
 API reference, upstream usage policies, and development.
 
+All library errors inherit from `PlacesError`, including `InvalidInputError` for
+invalid arguments. Request cancellation propagates as `asyncio.CancelledError`.
+
 ## Releases
 
 The publish workflow uses
