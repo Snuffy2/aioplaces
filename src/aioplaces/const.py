@@ -1,6 +1,6 @@
 """Address precedence inherited from the Places integration."""
 
-VERSION = "v0.1.1"  # x-release-please-version
+VERSION = "v0.1.2"  # x-release-please-version
 
 # Place type classification lists
 # Note: These lists have intentional overlaps. The parsing order in parser.py is:
